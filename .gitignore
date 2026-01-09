@@ -17,10 +17,12 @@ env/
 *.db
 
 # dbt
-dbt_project/target/
-dbt_project/dbt_packages/
-dbt_project/logs/
-dbt_project/profiles.yml  # Keep local, don't commit
+dbt/target/
+dbt/dbt_packages/
+dbt/dbt_internal_packages/
+dbt/logs/
+dbt/profiles.yml  # Keep local, don't commit
+dbt/.user.yml
 
 # Dagster
 .dagster/
@@ -45,6 +47,9 @@ tmps*/
 # OS
 .DS_Store
 Thumbs.db
+
+# Cache directories
+nflreadpy_cache/
 
 # Data files (adjust based on your needs)
 data/*.csv

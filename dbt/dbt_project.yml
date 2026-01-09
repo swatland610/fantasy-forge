@@ -1,0 +1,23 @@
+name: fantasy_forge
+
+profile: fantasy_forge
+
+seed-paths: ["seeds"]
+model-paths: ["models"]
+macro-paths: ["macros"]
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  fantasy_forge:
+    # Materialize staging models as views, and marts as tables
+    staging:
+      +schema: staging
+      +materialized: view
+    core:
+      +schema: core
+      +materialized: table
+    analytics:
+      +schema: analytics
+      +materialized: table

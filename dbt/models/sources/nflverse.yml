@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: nflverse
+    description: "Raw NFLVerse data"
+    schema: raw
+    tables:
+      - name: pbp
+      - name: players
+      - name: player_stats
+      - name: snap_counts
+      - name: teams
+      - name: team_stats

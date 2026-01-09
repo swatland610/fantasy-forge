@@ -22,6 +22,7 @@ def init_database(db_path: str = "data/ff_platform.duckdb"):
     with duckdb.connect(db_path) as conn:
         # Create schemas
         conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
+        conn.execute("CREATE SCHEMA IF NOT EXISTS staging")
         conn.execute("CREATE SCHEMA IF NOT EXISTS core")
         conn.execute("CREATE SCHEMA IF NOT EXISTS analytics")
 
@@ -29,7 +30,7 @@ def init_database(db_path: str = "data/ff_platform.duckdb"):
         schemas = conn.execute("""
             SELECT schema_name
             FROM information_schema.schemata
-            WHERE schema_name IN ('raw', 'core', 'analytics')
+            WHERE schema_name IN ('raw', 'staging', 'core', 'analytics')
             ORDER BY schema_name
         """).fetchall()
 
