@@ -1,0 +1,37 @@
+==================== 2026-01-09T06:26:49.539818Z | 019ba16f-ae3c-7b10-b1f9-da29bd501847 ====================
+06:26:50.443335 [info ]: 
+==================== Execution Summary =====================
+Finished 'system' successfully [903ms]
+==================== 2026-01-09T06:27:07.861387Z | 019ba16f-f5d4-7c63-8fc5-fd9b6d71367d ====================
+06:27:08.483210 [info ]: 
+==================== Execution Summary =====================
+Finished 'system' successfully [621ms]
+==================== 2026-01-09T06:36:24.288072Z | 019ba178-7351-7152-a5fd-b3decdf5a8ab ====================
+06:36:24.289778 [info ]: Installing dbt project and profile setup
+06:36:24.296512 [info ]: Info Created .vscode/extensions.json with dbt extension recommendation
+06:36:24.298150 [info ]: Success Project created successfully!
+06:36:24.298180 [info ]: Info Project name: jaffle_shop
+06:36:24.298201 [info ]: Info Project directory: jaffle_shop
+06:36:24.298220 [info ]: Info Setting up your profile...
+06:36:24.304501 [info ]: Info Creating new profile...
+06:40:09.274577 [info ]: No dbt_cloud.yml found - proceeding without cloud pre-population
+06:40:36.583182 [info ]: Success Profile written to ./profiles.yml
+06:40:36.584032 [info ]: Validating profile inputs, adapters, and connection
+
+06:40:36.584230 [info ]: dbt-fusion 2.0.0-preview.92
+06:40:36.587752 [info ]: Started loading project
+06:40:36.603727 [info ]: Loading profiles.yml
+06:40:36.613124 [info ]: Finished loading project [  0.03s]
+06:40:36.614071 [info ]: Started debugging
+06:40:36.614117 [info ]: Debugging profile: dev
+06:40:36.614137 [info ]: Debugging dbt version: 2.0.0-preview.92
+06:40:36.614147 [info ]: Debugging platform: macos aarch64 (unix)
+06:40:36.614466 [info ]: Debugging adapter type: postgres (remote)
+06:40:36.621372 [info ]: Debugging dependencies:
+  git: OK
+06:40:36.623647 [info ]: Debugging connection:
+  "port": 5432,
+  "database": "dummy",
+  "schema": "dummy",
+  "host": "localhost",
+  "user": "dummy"

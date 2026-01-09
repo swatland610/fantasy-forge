@@ -1,0 +1,9 @@
+fantasy_forge:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../data/ff_platform.duckdb
+      extensions:
+        - httpfs
+        - parquet
