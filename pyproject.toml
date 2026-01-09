@@ -1,0 +1,44 @@
+[project]
+name = "ff-data-platform"
+version = "0.1.0"
+description = "Fantasy football data platform"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dagster>=1.12.8",
+    "dagster-webserver>=1.12.8",
+    "dbt>=1.0.0.40.12",
+    "duckdb>=1.4.3",
+    "ipykernel>=7.1.0",
+    "jupyter>=1.1.1",
+    "mypy>=1.19.1",
+    "nflreadpy>=0.1.5",
+    "pandas>=2.3.3",
+    "polars>=1.36.1",
+    "pyarrow>=22.0.0",
+    "pytest>=9.0.2",
+]
+
+[project.entry-points."dagster"]
+ff_platform = "ff_platform.definitions:defs"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.dagster]
+module_name = "ff_platform.definitions"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ff_platform"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]  # pycodestyle, pyflakes, isort
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

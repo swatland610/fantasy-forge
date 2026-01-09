@@ -1,0 +1,53 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+env/
+
+# DuckDB databases (don't commit data files)
+*.duckdb
+*.duckdb.wal
+*.db
+
+# dbt
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+dbt_project/profiles.yml  # Keep local, don't commit
+
+# Dagster
+.dagster/
+.dagster_home/
+tmps*/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (adjust based on your needs)
+data/*.csv
+data/*.parquet
+data/*.json
+!data/.gitkeep
