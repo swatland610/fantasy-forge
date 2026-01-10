@@ -88,7 +88,6 @@ renamed as (
     from source
     where 1 = 1
     and play_type is not null
-    and season >= 2010
 )
 
 select * from renamed

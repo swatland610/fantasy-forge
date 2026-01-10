@@ -1,26 +1,33 @@
-with source as (
-    select * from {{ source('nflverse', 'player_stats') }}
+with raw_player_stats as (
+    select * 
+    from {{ ref('stg_nflverse__player_stats') }}
+), 
+
+players as (
+    select * 
+    from {{ ref('dim_players') }}
+), 
+
+games as (
+    select * 
+    from {{ ref('dim_games') }}
 ),
 
-renamed as (
+player_stats as (
     select
         -- ===== IDENTIFIERS =====
         player_id,
-        player_name,
-        player_display_name,
         season,
         week,
         season_type,
 
         -- ===== PLAYER INFO =====
         position,
-        position_group,
         team,
-        opponent_team,
 
         -- ===== PASSING =====
         completions,
-        attempts as pass_attempts,
+        pass_attempts,
         passing_yards,
         passing_tds,
         passing_interceptions,
@@ -87,13 +94,31 @@ renamed as (
         -- ===== FANTASY POINTS (PRE-CALCULATED) =====
         fantasy_points,
         fantasy_points_ppr,
-        round( (fantasy_points + fantasy_points_ppr) / 2, 1) as fantasy_points_half ,
+        fantasy_points_half
 
-        -- ===== MEDIA =====
-        headshot_url
+    from raw_player_stats
+),
 
-    from source
-    where 1 = 1
+final as (
+    select 
+        p.*, 
+        pl.sleeper_id, 
+        pl.cbs_id,
+        case when p.team = g.home_team then true else false end as is_home_game,
+        case 
+            when p.team = g.winning_team then true
+            when g.is_tie then null  -- ties are neither win nor loss
+            else false 
+        end as team_won
+    from player_stats p 
+    left join players pl 
+        on p.player_id = pl.player_id
+    left join games g 
+        on p.season = g.season 
+        and p.week = g.week 
+        and (p.team = g.home_team or p.team = g.away_team)
+    where 1 = 1 
+    and p.position in ('QB', 'RB', 'WR', 'TE', 'K')
 )
 
-select * from renamed
+select * from final 
