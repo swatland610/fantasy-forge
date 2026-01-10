@@ -50,7 +50,7 @@ cp data/ff_platform.duckdb data/backups/ff_platform_$(date +%Y%m%d).duckdb
 
 ## Architecture
 
-**Current State**: Core infrastructure in place with Dagster definitions, dbt models (staging layer), and populated DuckDB.
+**Current State**: Staging and core dbt layers complete with dimensional models (dim_games, dim_players, dim_teams, fct_player_game_stats), tests passing, and 26 seasons of NFL data (1999-2025).
 
 **Data Flow**:
 ```
@@ -128,3 +128,11 @@ ff-data-platform/
 - Primary data source for NFL statistics
 - Returns pandas DataFrames by default
 - Cache stored in `data/nflreadpy_cache/`
+
+  ## Interaction Style
+
+  Prefer teaching over doing. When I ask for help with something:
+  - Guide me through the steps rather than writing code/files directly
+  - Explain the "why" behind things, not just the "what"
+  - Let me type the commands and make the edits myself
+  - Only do things directly for me if I explicitly ask (e.g., "just do it for me" or "can you handle this one")

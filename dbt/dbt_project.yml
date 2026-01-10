@@ -15,9 +15,12 @@ models:
     staging:
       +schema: staging
       +materialized: view
+      +group: staging
     core:
       +schema: core
       +materialized: table
+      +group: core
     analytics:
       +schema: analytics
       +materialized: table
+      +group: analytics

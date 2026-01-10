@@ -1,0 +1,101 @@
+version: 2
+
+models:
+  - name: dim_games
+    description: Game dimension with outcomes, conditions, and derived win/loss flags
+    columns:
+      - name: game_id
+        description: Unique game identifier
+        tests:
+          - unique
+          - not_null
+      - name: season
+        tests:
+          - not_null
+      - name: week
+        tests:
+          - not_null
+      - name: home_team
+        description: Home team abbreviation
+        tests:
+          - not_null
+      - name: away_team
+        description: Away team abbreviation
+        tests:
+          - not_null
+      - name: winning_team
+        description: Team abbreviation of the winner (null for ties)
+      - name: is_tie
+        description: Boolean flag indicating if game ended in a tie
+
+  - name: dim_players
+    description: Player dimension with IDs, biographical data, and career info
+    columns:
+      - name: player_id
+        description: Unique player identifier (GSIS ID)
+        tests:
+          - unique
+          - not_null
+      - name: display_name
+        description: Player's display name
+        tests:
+          - not_null
+      - name: position
+        description: Player's primary position
+      - name: sleeper_id
+        description: Sleeper platform player ID (for future API integration)
+
+  - name: dim_teams
+    description: Team dimension with conference, division, and branding info
+    columns:
+      - name: team_abbr
+        description: Team abbreviation (primary key)
+        tests:
+          - unique
+          - not_null
+      - name: team_name
+        description: Full team name
+        tests:
+          - not_null
+      - name: conference
+        description: AFC or NFC
+        tests:
+          - accepted_values:
+              values: ['AFC', 'NFC']
+      - name: division
+        description: Full division name (e.g., AFC East, NFC West)
+        tests:
+          - accepted_values:
+              values: ['AFC East', 'AFC West', 'AFC North', 'AFC South', 'NFC East', 'NFC West', 'NFC North', 'NFC South']
+
+  - name: fct_player_game_stats
+    description: Fact table of player statistics per game with fantasy points and game context
+    columns:
+      - name: player_id
+        description: Player identifier (foreign key to dim_players)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: season
+        tests:
+          - not_null
+      - name: week
+        tests:
+          - not_null
+      - name: position
+        description: Player position (filtered to QB, RB, WR, TE, K)
+        tests:
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE', 'K']
+      - name: fantasy_points
+        description: Standard scoring fantasy points
+      - name: fantasy_points_ppr
+        description: PPR scoring fantasy points
+      - name: fantasy_points_half
+        description: Half-PPR scoring fantasy points
+      - name: is_home_game
+        description: Boolean flag if player's team was home
+      - name: team_won
+        description: Boolean flag if player's team won (null for ties)

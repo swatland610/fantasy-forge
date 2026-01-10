@@ -1,0 +1,79 @@
+version: 2
+
+models:
+  - name: stg_nflverse__player_stats
+    description: Player-level statistics per game week, cleaned from nflverse source
+    columns:
+      - name: player_id
+        description: Unique player identifier (GSIS ID) - some nulls exist for team-level records
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: season
+        description: NFL season year
+        tests:
+          - not_null
+      - name: week
+        description: Week number within the season
+        tests:
+          - not_null
+      - name: fantasy_points
+        description: Standard scoring fantasy points
+      - name: fantasy_points_ppr
+        description: PPR scoring fantasy points
+      - name: fantasy_points_half
+        description: Half-PPR scoring fantasy points
+
+  - name: stg_nflverse__players
+    description: Player dimension data including biographical and career info
+    columns:
+      - name: player_id
+        description: Unique player identifier (GSIS ID)
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_nflverse__teams
+    description: NFL team reference data
+    columns:
+      - name: team_abbr
+        description: Team abbreviation (e.g., KC, BUF)
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_nflverse__schedules
+    description: NFL game schedule with results and conditions
+    columns:
+      - name: game_id
+        description: Unique game identifier
+        tests:
+          - unique
+          - not_null
+      - name: season
+        tests:
+          - not_null
+      - name: week
+        tests:
+          - not_null
+
+  - name: stg_nflverse__ff_playerids
+    description: Crosswalk table mapping player IDs across fantasy platforms
+    columns:
+      - name: player_id
+        description: GSIS player ID
+        tests:
+          - unique
+          - not_null
+      - name: sleeper_id
+        description: Sleeper platform player ID
+
+  - name: stg_nflverse__play_by_plays
+    description: Play-by-play data for NFL games
+
+  - name: stg_nflverse__snap_counts
+    description: Player snap count data per game
+
+  - name: stg_nflverse__team_stats
+    description: Team-level aggregate statistics per game

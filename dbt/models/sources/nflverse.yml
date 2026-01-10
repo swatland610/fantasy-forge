@@ -5,9 +5,11 @@ sources:
     description: "Raw NFLVerse data"
     schema: raw
     tables:
+      - name: ff_playerids
       - name: pbp
       - name: players
       - name: player_stats
+      - name: schedules
       - name: snap_counts
       - name: teams
       - name: team_stats
