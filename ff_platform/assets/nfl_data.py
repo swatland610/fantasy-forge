@@ -9,7 +9,6 @@ from dagster import AssetExecutionContext, asset
 
 from ff_platform.resources import DuckDBResource
 
-
 # =============================================================================
 # Core game data
 # =============================================================================
@@ -87,7 +86,7 @@ def raw_participation(context: AssetExecutionContext, duckdb: DuckDBResource) ->
 def raw_injuries(context: AssetExecutionContext, duckdb: DuckDBResource) -> None:
     """Injury report data for all seasons."""
     context.log.info("Loading injuries for all seasons")
-    df = nfl.load_injuries(seasons=True)
+    df = nfl.load_injuries(seasons=[i for i in range(2009, 2025)])
     context.log.info(f"Loaded {len(df)} records")
     duckdb.load_df(df, schema="raw", table="injuries")
 
@@ -278,7 +277,7 @@ def raw_ff_playerids(context: AssetExecutionContext, duckdb: DuckDBResource) -> 
 def raw_ff_rankings(context: AssetExecutionContext, duckdb: DuckDBResource) -> None:
     """Fantasy football rankings for all seasons."""
     context.log.info("Loading FF rankings for all seasons")
-    df = nfl.load_ff_rankings(seasons=True)
+    df = nfl.load_ff_rankings(type="all")
     context.log.info(f"Loaded {len(df)} records")
     duckdb.load_df(df, schema="raw", table="ff_rankings")
 

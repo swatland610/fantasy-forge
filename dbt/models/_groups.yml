@@ -1,0 +1,14 @@
+version: 2
+
+groups:
+  - name: staging
+    owner:
+      name: data-team
+
+  - name: core
+    owner:
+      name: data-team
+
+  - name: analytics
+    owner:
+      name: data-team
