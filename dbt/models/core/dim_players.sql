@@ -13,7 +13,7 @@ final as (
     -- ===== PRIMARY IDENTIFIERS =====
     p.player_id,
     p.esb_id,
-    p.pfr_id,
+    p.pfr_id as pfr_player_id,
     p.pff_id,
     p.espn_id,
     f.sleeper_id, 

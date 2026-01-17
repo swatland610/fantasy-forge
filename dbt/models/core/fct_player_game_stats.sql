@@ -13,6 +13,11 @@ games as (
     from {{ ref('dim_games') }}
 ),
 
+snap_counts as (
+    select * 
+    from {{ ref('stg_nflverse__snap_counts') }}
+),
+
 player_stats as (
     select
         -- ===== IDENTIFIERS =====
@@ -102,6 +107,9 @@ player_stats as (
 final as (
     select 
         p.*, 
+        sc.offense_snaps, 
+        sc.offense_pct,
+        pl.pfr_player_id,
         pl.sleeper_id, 
         pl.cbs_id,
         case when p.team = g.home_team then true else false end as is_home_game,
@@ -113,7 +121,12 @@ final as (
     from player_stats p 
     left join players pl 
         on p.player_id = pl.player_id
-    left join games g 
+    left join snap_counts sc 
+        on p.season = sc.season 
+        and p.week = sc.week 
+        and p.team = sc.team
+        and pl.pfr_player_id = sc.pfr_player_id
+    left join games g
         on p.season = g.season 
         and p.week = g.week 
         and (p.team = g.home_team or p.team = g.away_team)
