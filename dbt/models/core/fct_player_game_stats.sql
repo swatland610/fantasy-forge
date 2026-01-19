@@ -107,6 +107,7 @@ player_stats as (
 final as (
     select 
         p.*, 
+        g.game_id, 
         sc.offense_snaps, 
         sc.offense_pct,
         pl.pfr_player_id,
