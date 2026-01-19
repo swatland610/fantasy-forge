@@ -34,7 +34,7 @@ build-backend = "hatchling.build"
 module_name = "ff_platform.definitions"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ff_platform"]
+packages = ["ff_platform", "config"]
 
 [tool.ruff]
 line-length = 100
