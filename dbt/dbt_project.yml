@@ -16,6 +16,10 @@ models:
       +schema: staging
       +materialized: view
       +group: staging
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+      +group: intermediate
     core:
       +schema: core
       +materialized: table

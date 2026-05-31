@@ -5,6 +5,10 @@ groups:
     owner:
       name: data-team
 
+  - name: intermediate
+    owner:
+      name: data-team
+
   - name: core
     owner:
       name: data-team

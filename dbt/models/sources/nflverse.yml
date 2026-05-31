@@ -5,7 +5,9 @@ sources:
     description: "Raw NFLVerse data"
     schema: raw
     tables:
+      - name: depth_charts
       - name: ff_playerids
+      - name: injuries
       - name: pbp
       - name: players
       - name: player_stats
