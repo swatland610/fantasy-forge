@@ -1,0 +1,255 @@
+version: 2
+
+models:
+  - name: fct_fantasy_points
+    description: >
+      Fantasy points per player-game per scoring format, computed by pivoting game-level
+      component stats against the scoring_rules seed. Grain: one row per
+      (player_id, season, week, season_type, format_name). Validation: the 'ppr' and
+      'half_ppr' formats should reproduce fct_player_game_stats.fantasy_points_ppr /
+      fantasy_points_half (modulo rare sack-fumble cases not present as a column).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - player_id
+            - season
+            - week
+            - season_type
+            - format_name
+    columns:
+      - name: player_id
+        description: Unique player identifier (GSIS ID)
+        tests:
+          - not_null
+      - name: season
+        tests:
+          - not_null
+      - name: week
+        tests:
+          - not_null
+      - name: format_name
+        description: Scoring format key (FK to scoring_rules.format_name)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('scoring_rules')
+              field: format_name
+      - name: fantasy_points
+        description: Total fantasy points for the player-game under this format
+        tests:
+          - not_null
+
+  - name: fct_player_season_fantasy_points
+    description: >
+      Actual season fantasy points per (season, player_id, format_name) -- the V-GATE backtest's
+      ground truth. Scores fct_player_season_stats through scoring_rules with the same melt as
+      proj_player_fantasy_points, so projected and actual points are computed identically (incl.
+      the boc sack penalty, which the game-grain fct_fantasy_points omits). Carries position and
+      games_played for per-position correlation and survivorship (minimum-games) handling.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - season
+            - player_id
+            - format_name
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+      - name: season
+        tests:
+          - not_null
+      - name: format_name
+        tests:
+          - not_null
+          - relationships:
+              to: ref('scoring_rules')
+              field: format_name
+      - name: fantasy_points
+        tests:
+          - not_null
+
+  - name: proj_player_season_components
+    description: >
+      V3 preseason projection of every scored counting-stat component, one row per
+      (projection_season, returning player). Season-generalized over a spine of target seasons
+      (var projection_seasons, default 2021-2026): the live board is projection_season = 2026 and
+      the 5 backtest folds are 2021-2025, all from one engine. Built from recency-weighted (3-2-1)
+      prior-season opportunity and reliability-shrunk efficiency/TD rates
+      (see docs/reliability-weighted-shrinkage.md). Each fold windows strictly on its own past
+      (no leakage). Rookies/no-history players are absent by construction; thin or stale histories
+      are flagged via is_projection_low_confidence (not faked). Feeds the scoring layer (V4).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - projection_season
+            - player_id
+    columns:
+      - name: player_id
+        description: Player identifier (foreign key to dim_players)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: is_projection_low_confidence
+        description: True when the player has only one season of history or did not play the prior season
+        tests:
+          - not_null
+      - name: projected_games
+        description: Recency-weighted projected games, regressed toward the position durability anchor (capped 17)
+        tests:
+          - not_null
+
+  - name: proj_player_fantasy_points
+    description: >
+      V4 preseason projection scored into fantasy points per format, one row per
+      (projection_season, player_id, format_name). Prices the V3 projected components
+      (proj_player_season_components) against the scoring_rules seed using the same
+      UNPIVOT-and-join machinery as fct_fantasy_points, so projected and historical points are
+      computed identically. Carries the projection_season key, so it prices every backtest fold
+      and the live 2026 board in one build. Points depend only on scoring, not roster settings;
+      the roster/replacement (VORP) layer is V5 and consumes this.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - projection_season
+            - player_id
+            - format_name
+    columns:
+      - name: player_id
+        description: Player identifier (foreign key to dim_players)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: format_name
+        description: Scoring format key (FK to scoring_rules.format_name)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('scoring_rules')
+              field: format_name
+      - name: fantasy_points
+        description: Total projected fantasy points for the player under this format
+        tests:
+          - not_null
+
+  - name: replacement_levels
+    description: >
+      V5 demand-aware replacement level: the projected points of the last startable player at
+      each position in each league, per projection season. Grain: one row per
+      (projection_season, league_id, position). startable_demand is the fractional starter count
+      from the leagues + roster_slots seeds; replacement_rank is that demand rounded to the
+      nearest within-position rank; replacement_points is the projected points of the player at
+      that rank under the league's scoring format, ranked within the fold. Baseline for VORP.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - projection_season
+            - league_id
+            - position
+    columns:
+      - name: league_id
+        description: League identifier (FK to leagues.league_id)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('leagues')
+              field: league_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: replacement_rank
+        description: Within-position rank treated as the last startable player (rounded demand)
+        tests:
+          - not_null
+      - name: replacement_points
+        description: Projected points of the replacement-rank player under the league format
+        tests:
+          - not_null
+
+  - name: proj_team_season_offense
+    description: >
+      Season-generalized team offense projection, one row per (projection_season, team).
+      Recency-weighted (3-2-1 decay) average of per-game rates from the prior 3 seasons × 17.
+      No shrinkage — teams always play 17 games so there is no sample-size variance to regress
+      away. Live board is projection_season = 2026; prior years are backtest folds. Feeds the
+      player-level stat-share allocation model downstream.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - projection_season
+            - team
+    columns:
+      - name: team
+        description: Team abbreviation
+        tests:
+          - not_null
+      - name: projection_season
+        description: Target NFL season being projected
+        tests:
+          - not_null
+      - name: seasons_of_history
+        description: Count of prior seasons contributing to the weighted average (max 3)
+        tests:
+          - not_null
+      - name: offense_rank
+        description: Dense rank within projection_season ordered by proj_total_yards desc
+        tests:
+          - not_null
+
+  - name: player_values
+    description: >
+      V5 cross-position value board. Grain: one row per (projection_season, league_id, player_id).
+      VORP = projected points (in the league's format) minus the positional replacement level,
+      with overall and positional rank per league per season. Fans out across all leagues in the
+      leagues seed and all projection seasons (live 2026 board = projection_season 2026; backtest
+      folds = 2021-2025). The superflex QB premium emerges from the demand model in
+      replacement_levels, not from any logic here.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - projection_season
+            - league_id
+            - player_id
+    columns:
+      - name: league_id
+        description: League identifier (FK to leagues.league_id)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('leagues')
+              field: league_id
+      - name: player_id
+        description: Player identifier (FK to dim_players)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: vorp
+        description: Projected points over positional replacement (the cross-position value)
+        tests:
+          - not_null
+      - name: is_projection_low_confidence
+        tests:
+          - not_null
