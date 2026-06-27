@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: int_projection__position_baselines
+    description: >
+      Recency-weighted (3-2-1), volume-weighted league rate per position, computed as-of each
+      target season over its trailing 3-season window. These are the shrink targets for the V3
+      projection: a player's noisy own-rate is pulled toward the matching baseline. Season-
+      generalized over var('projection_seasons') (default 2021-2026), so each backtest fold has
+      its own leak-free baseline. Starters only (games_played >= 8). One row per
+      (projection_season, position).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - projection_season
+            - position
+    columns:
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']

@@ -1,0 +1,5 @@
+league_id,position,dedicated_starters,flex_weight,superflex_weight
+boc,QB,1,0.00,0.850
+boc,RB,2,0.35,0.045
+boc,WR,3,0.55,0.090
+boc,TE,1,0.10,0.015

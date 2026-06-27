@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "sleeper": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "mcpservers/sleeper/server.py"
+      ]
+    },
+    "discord": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "mcpservers/discord/server.py"
+      ],
+      "env": {
+        "DISCORD_BOT_TOKEN": "${DISCORD_BOT_TOKEN}",
+        "DISCORD_CHANNEL_ID": "${DISCORD_CHANNEL_ID}"
+      }
+    }
+  }
+}

@@ -1,0 +1,158 @@
+version: 2
+
+seeds:
+  - name: scoring_rules
+    description: >
+      Long-format fantasy scoring configuration. Grain: one row per
+      (format_name, stat_name) giving points_per unit of that stat. stat_name maps
+      1:1 to a component column in fct_player_game_stats. Zero-value rules are omitted
+      on purpose: the scoring join (fct_fantasy_points) is an inner join, so any stat
+      without a rule for a given format contributes 0. PPFD ('ppfd') pays +1 per
+      rushing/receiving first down and 0 for receptions; passing_first_downs is never
+      scored in any format. 'boc' = ppfd + a -1/sack QB penalty (sacks_suffered).
+    config:
+      column_types:
+        format_name: varchar
+        stat_name: varchar
+        points_per: double
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - format_name
+            - stat_name
+    columns:
+      - name: format_name
+        description: Scoring format identifier (standard, half_ppr, ppr, ppfd, boc)
+        tests:
+          - not_null
+      - name: stat_name
+        description: Component stat key matching a column in fct_player_game_stats
+        tests:
+          - not_null
+      - name: points_per
+        description: Points awarded per unit of stat_name
+        tests:
+          - not_null
+
+  - name: shrinkage_constants
+    description: >
+      Reliability-weighted shrinkage constants (k) per (position, component), fit from the
+      V-GATE season-grain stability analysis (run 2026-06-02) as k = n_typ*(1-R)/R. Consumed
+      by proj_player_season_components via the reliability_shrink() macro: a player's
+      noisy own-rate is pulled toward the position baseline with weight n/(n+k). r and n_typ
+      are recorded for provenance. See docs/reliability-weighted-shrinkage.md.
+    config:
+      column_types:
+        position: varchar
+        component: varchar
+        k: integer
+        r: double
+        n_typ: integer
+        fit_notes: varchar
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - position
+            - component
+    columns:
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: component
+        tests:
+          - not_null
+      - name: k
+        description: Shrinkage constant in the same units as n (opportunity count)
+        tests:
+          - not_null
+
+  - name: leagues
+    description: >
+      One row per fantasy league: the single source of truth for which leagues exist and their
+      two independent config axes -- scoring_format (FK -> scoring_rules) and roster/league
+      settings. Slot COUNTS live here (league-level constants); per-position flex allocation
+      WEIGHTS live in roster_slots. The valuation layer (replacement_levels, player_values)
+      fans out across every row here in one idempotent build.
+    config:
+      column_types:
+        league_id: varchar
+        league_name: varchar
+        scoring_format: varchar
+        num_teams: integer
+        league_type: varchar
+        flex_slots: integer
+        superflex_slots: integer
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - league_id
+    columns:
+      - name: league_id
+        description: Unique league identifier
+        tests:
+          - not_null
+          - unique
+      - name: scoring_format
+        description: Scoring format key (FK to scoring_rules.format_name)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('scoring_rules')
+              field: format_name
+      - name: num_teams
+        tests:
+          - not_null
+      - name: league_type
+        description: redraft or dynasty (the V5 valuation produces the single-season slice for both)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['redraft', 'dynasty']
+
+  - name: roster_slots
+    description: >
+      One row per (league_id, position): the dedicated starter count plus the fractional flex
+      allocation weights -- P(a position fills a given flex pool). flex_weight applies to the
+      regular FLEX pool (R/W/T) and superflex_weight to the SUPERFLEX pool (Q/R/W/T); each pool's
+      weights sum to 1.0 across positions (one slot is filled by exactly one position). This is
+      where the fiddly superflex allocation lives as auditable config, not hardcoded logic.
+      Demand[league,pos] = num_teams * (dedicated_starters + flex_slots*flex_weight
+                                        + superflex_slots*superflex_weight).
+    config:
+      column_types:
+        league_id: varchar
+        position: varchar
+        dedicated_starters: integer
+        flex_weight: double
+        superflex_weight: double
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - league_id
+            - position
+    columns:
+      - name: league_id
+        description: League identifier (FK to leagues.league_id)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('leagues')
+              field: league_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: dedicated_starters
+        tests:
+          - not_null
+      - name: flex_weight
+        description: Fraction of a regular FLEX (R/W/T) slot allocated to this position
+        tests:
+          - not_null
+      - name: superflex_weight
+        description: Fraction of a SUPERFLEX (Q/R/W/T) slot allocated to this position
+        tests:
+          - not_null

@@ -68,6 +68,40 @@ models:
           - not_null
       - name: sleeper_id
         description: Sleeper platform player ID
+      - name: fantasypros_id
+        description: FantasyPros player ID (crosswalk key for ff_rankings ECR)
+
+  - name: stg_nflverse__ff_rankings
+    description: >
+      FantasyPros redraft-superflex ECR, one contemporaneous preseason (latest-August) snapshot
+      per season. The V-GATE market baseline. Grain: one row per (projection_season,
+      fantasypros_id). player_id (gsis) is a nullable crosswalk -- unmatched rows are kept and
+      flagged via has_gsis_match, not dropped.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - projection_season
+            - fantasypros_id
+    columns:
+      - name: projection_season
+        description: Season the snapshot ranks (= the August scrape's calendar year)
+        tests:
+          - not_null
+      - name: fantasypros_id
+        description: FantasyPros player ID (natural key from the source)
+        tests:
+          - not_null
+      - name: player_id
+        description: GSIS player ID via the crosswalk; NULL when unmatched (surfaced)
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: ecr
+        description: Expert consensus rank (lower = better); the field the backtest ranks on
+        tests:
+          - not_null
 
   - name: stg_nflverse__play_by_plays
     description: Play-by-play data for NFL games
