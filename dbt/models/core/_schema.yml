@@ -68,6 +68,91 @@ models:
           - accepted_values:
               values: ['AFC East', 'AFC West', 'AFC North', 'AFC South', 'NFC East', 'NFC West', 'NFC North', 'NFC South']
 
+  - name: fct_player_season_stats
+    description: >
+      Season rollup of player stats, one row per (player_id, season), regular season only.
+      Source unit for the preseason projection (V3). Mid-season team changes collapse to one
+      row (team/position = last by week). Efficiency rates are NULL when the player had zero
+      opportunities of that type (surfaced, not coalesced); avg_* shares are means of per-game
+      shares, not true season shares.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - player_id
+            - season
+    columns:
+      - name: player_id
+        description: Player identifier (foreign key to dim_players)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: season
+        tests:
+          - not_null
+      - name: position
+        description: Player's last position of the season (filtered to QB, RB, WR, TE, K)
+        tests:
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE', 'K']
+      - name: games_played
+        description: Distinct regular-season weeks the player recorded a game
+        tests:
+          - not_null
+
+  - name: fct_team_season_stats
+    description: >
+      Season rollup of team offensive stats, one row per (team, season), regular season only.
+      Source unit for proj_team_season_offense. Includes season totals, per-game rates, and
+      efficiency metrics for passing, rushing, and targets. snap_counts available 2013+;
+      pfr_advstats_rushing (rush_ybc_per_carry OL proxy) available 2018+ — earlier seasons
+      have NULLs for those columns.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - team
+            - season
+    columns:
+      - name: team
+        description: Team abbreviation
+        tests:
+          - not_null
+      - name: season
+        description: NFL season year
+        tests:
+          - not_null
+      - name: games_played
+        description: Regular season games played (row count from stg_nflverse__team_stats)
+        tests:
+          - not_null
+      - name: passing_air_yards
+        description: Total intended air yards on pass attempts
+      - name: targets
+        description: Total pass targets — the allocation pie for the downstream player-level model
+        tests:
+          - not_null
+      - name: offense_snaps
+        description: Total team offensive snaps for the season (MAX player snaps per game, summed); null before 2013
+      - name: offense_snaps_per_game
+        description: Average team offensive snaps per game (MAX player snaps per game, averaged); null before 2013
+      - name: rush_yards_before_contact
+        description: Total rushing yards gained before defender contact — primary OL proxy; null before 2018
+      - name: rush_ybc_per_carry
+        description: Rushing yards before contact per carry — OL proxy rate; null before 2018
+      - name: completion_pct
+        description: Season completion percentage (completions / pass_attempts)
+      - name: pass_td_rate
+        description: Passing TD rate (passing_tds / pass_attempts)
+      - name: rush_td_rate
+        description: Rushing TD rate (rushing_tds / carries)
+      - name: rush_ypc
+        description: Rushing yards per carry
+      - name: air_yards_per_target
+        description: Intended air yards per target — depth of passing game
+      - name: air_yards_per_attempt
+        description: Intended air yards per pass attempt
+
   - name: fct_player_game_stats
     description: Fact table of player statistics per game with fantasy points and game context
     columns:
