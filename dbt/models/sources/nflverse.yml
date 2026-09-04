@@ -12,6 +12,7 @@ sources:
       - name: players
       - name: player_stats
       - name: schedules
+      - name: pfr_advstats_rushing
       - name: snap_counts
       - name: teams
       - name: team_stats
