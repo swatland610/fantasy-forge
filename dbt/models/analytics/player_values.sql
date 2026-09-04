@@ -17,6 +17,14 @@
 --
 -- is_projection_low_confidence is carried through, not filtered: thin/stale-history players are
 -- still valued, just flagged, so the consumer can discount them rather than have them vanish.
+--
+-- player_status: carried through, never filtered on. dim_players.status is CURRENT state with no
+-- season key, so filtering here would retroactively delete players from the 2021-2025 backtest
+-- folds for being retired today (only 368 of the 874 players in the 2021 fold are ACT now) --
+-- silently corrupting the V-GATE harness. It is surfaced so a live draft board can exclude
+-- season-ending statuses itself; which statuses count is the consumer's call, not this model's.
+-- Without it, reserve/exempt players carried full auction value on the live 2026 coolplace board
+-- (Mixon RSN $54 against a market ECR of 284, Jacobs EXE $47). NULL when no dim_players row.
 
 with pts as (
 
@@ -46,7 +54,8 @@ valued as (
         p.fantasy_points                          as projected_points,
         rl.replacement_points,
         p.fantasy_points - rl.replacement_points  as vorp,
-        p.is_projection_low_confidence
+        p.is_projection_low_confidence,
+        dp.status                                 as player_status
     from {{ ref('leagues') }} as l
     join pts as p
         on p.format_name = l.scoring_format
@@ -54,6 +63,8 @@ valued as (
         on  rl.projection_season = p.projection_season
         and rl.league_id         = l.league_id
         and rl.position          = p.position
+    left join {{ ref('dim_players') }} as dp
+        on dp.player_id = p.player_id
 
 )
 
@@ -68,6 +79,7 @@ select
     round(replacement_points, 1) as replacement_points,
     round(vorp, 1)               as vorp,
     is_projection_low_confidence,
+    player_status,
     -- player_id is a deterministic tiebreaker so ranks are reproducible across runs
     -- (equal-VORP players would otherwise order by arbitrary scan order)
     row_number() over (partition by projection_season, league_id            order by vorp desc, player_id) as overall_rank,

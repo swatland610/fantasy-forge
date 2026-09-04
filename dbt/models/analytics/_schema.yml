@@ -224,3 +224,11 @@ models:
       - name: is_projection_low_confidence
         tests:
           - not_null
+      - name: player_status
+        description: >
+          dim_players.status at build time (ACT, RES, RSN, EXE, CUT, PUP, DEV, ...). NULL when the
+          player has no dim_players row. Surfaced, never filtered on: status is current state with
+          no season key, so filtering would retroactively drop players from the 2021-2025 backtest
+          folds for being retired today (only 368 of 874 in the 2021 fold are ACT now). A live
+          draft board excludes season-ending statuses itself; which ones count is the consumer's
+          call, not this model's.
