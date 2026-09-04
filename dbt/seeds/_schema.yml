@@ -105,11 +105,11 @@ seeds:
         tests:
           - not_null
       - name: league_type
-        description: redraft or dynasty (the V5 valuation produces the single-season slice for both)
+        description: redraft, dynasty or keeper (the V5 valuation produces the single-season slice for all three)
         tests:
           - not_null
           - accepted_values:
-              values: ['redraft', 'dynasty']
+              values: ['redraft', 'dynasty', 'keeper']
 
   - name: roster_slots
     description: >
@@ -120,6 +120,10 @@ seeds:
       where the fiddly superflex allocation lives as auditable config, not hardcoded logic.
       Demand[league,pos] = num_teams * (dedicated_starters + flex_slots*flex_weight
                                         + superflex_slots*superflex_weight).
+      NOTE: flex_weight is per-league because flex ELIGIBILITY differs. boc's FLEX is R/W/T.
+      coolplace's is WRRB_FLEX (RB/WR only), so TE gets flex_weight 0 and boc's R/W/T weights
+      are renormalised over RB+WR: RB .35/.90=.39, WR .55/.90=.61. Copying boc's weights would
+      have silently credited TE with flex demand it cannot fill in that league.
     config:
       column_types:
         league_id: varchar
