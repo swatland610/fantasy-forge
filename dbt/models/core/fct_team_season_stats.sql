@@ -1,8 +1,21 @@
 -- Grain: (team, season) — one row per team per regular season
 -- Source: stg_nflverse__team_stats (game-grain); filter: REG only
 -- snap_counts: 2013+; pfr_advstats_rushing: 2018+ — earlier seasons will have NULLs for those columns
+-- stg_nflverse__team_stats already normalizes relocated franchises to current codes (LV/LA/LAC);
+-- snap_counts and pfr_advstats_rushing still use the old codes (OAK/STL/SD) for those years, so
+-- both are remapped below to match the join key, or LV/LA/LAC team-seasons join to nothing.
 
-with team_game_stats as (
+with team_code_map as (
+
+    select * from (values
+        ('OAK', 'LV'),
+        ('STL', 'LA'),
+        ('SD',  'LAC')
+    ) as t(old_code, new_code)
+
+),
+
+team_game_stats as (
 
     -- excludes a known junk row: 1999 week 9 has team IS NULL with a garbage stat line
     select * from {{ ref('stg_nflverse__team_stats') }}
@@ -15,13 +28,14 @@ with team_game_stats as (
 snap_game as (
 
     select
-        team,
-        season,
-        week,
-        max(offense_snaps) as team_offense_snaps
-    from {{ ref('stg_nflverse__snap_counts') }}
-    where game_type = 'REG'
-    group by team, season, week
+        coalesce(m.new_code, sc.team)  as team,
+        sc.season,
+        sc.week,
+        max(sc.offense_snaps)          as team_offense_snaps
+    from {{ ref('stg_nflverse__snap_counts') }} as sc
+    left join team_code_map as m on m.old_code = sc.team
+    where sc.game_type = 'REG'
+    group by coalesce(m.new_code, sc.team), sc.season, sc.week
 
 ),
 
@@ -41,17 +55,18 @@ snap_season as (
 pfr_rush_season as (
 
     select
-        team,
-        season,
-        sum(rushing_yards_before_contact)              as rush_yards_before_contact,
+        coalesce(m.new_code, pr.team)                  as team,
+        pr.season,
+        sum(pr.rushing_yards_before_contact)           as rush_yards_before_contact,
         round(
-            sum(rushing_yards_before_contact)::double
-            / nullif(sum(carries), 0),
+            sum(pr.rushing_yards_before_contact)::double
+            / nullif(sum(pr.carries), 0),
             2
         )                                              as rush_ybc_per_carry
-    from {{ ref('stg_nflverse__pfr_advstats_rushing') }}
-    where game_type = 'REG'
-    group by team, season
+    from {{ ref('stg_nflverse__pfr_advstats_rushing') }} as pr
+    left join team_code_map as m on m.old_code = pr.team
+    where pr.game_type = 'REG'
+    group by coalesce(m.new_code, pr.team), pr.season
 
 ),
 
