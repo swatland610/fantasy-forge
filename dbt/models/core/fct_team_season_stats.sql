@@ -1,9 +1,10 @@
 -- Grain: (team, season) — one row per team per regular season
 -- Source: stg_nflverse__team_stats (game-grain); filter: REG only
 -- snap_counts: 2013+; pfr_advstats_rushing: 2018+ — earlier seasons will have NULLs for those columns
--- stg_nflverse__team_stats already normalizes relocated franchises to current codes (LV/LA/LAC);
--- snap_counts and pfr_advstats_rushing still use the old codes (OAK/STL/SD) for those years, so
--- both are remapped below to match the join key, or LV/LA/LAC team-seasons join to nothing.
+-- The raw nflverse team_stats source already normalizes relocated franchises to current codes
+-- (LV/LA/LAC); snap_counts and pfr_advstats_rushing still use the old codes (OAK/STL/SD) for
+-- those years, so both are remapped below to match the join key, or LV/LA/LAC team-seasons join
+-- to nothing.
 
 with team_code_map as (
 
@@ -44,8 +45,7 @@ snap_season as (
     select
         team,
         season,
-        sum(team_offense_snaps)                        as offense_snaps,
-        round(avg(team_offense_snaps), 1)              as offense_snaps_per_game
+        sum(team_offense_snaps)                        as offense_snaps
     from snap_game
     group by team, season
 
@@ -121,7 +121,7 @@ select
 
     -- snap counts (null before 2013)
     s.offense_snaps,
-    s.offense_snaps_per_game,
+    round(s.offense_snaps::double / a.games_played, 1)                 as offense_snaps_per_game,
 
     -- OL proxy: rushing yards before contact (null before 2018)
     p.rush_yards_before_contact,
