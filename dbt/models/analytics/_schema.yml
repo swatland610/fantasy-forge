@@ -182,6 +182,35 @@ models:
         tests:
           - not_null
 
+  - name: proj_team_season_offense
+    description: >
+      Season-generalized team offense projection, one row per (projection_season, team).
+      Recency-weighted (3-2-1 decay) average of per-game rates from the prior 3 seasons × 17.
+      No shrinkage — teams always play 17 games so there is no sample-size variance to regress
+      away. Live board is projection_season = 2026; prior years are backtest folds. Feeds the
+      player-level stat-share allocation model downstream.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - projection_season
+            - team
+    columns:
+      - name: team
+        description: Team abbreviation
+        tests:
+          - not_null
+      - name: projection_season
+        description: Target NFL season being projected
+        tests:
+          - not_null
+      - name: seasons_of_history
+        description: Count of prior seasons contributing to the weighted average (max 3)
+        tests:
+          - not_null
+      - name: offense_rank
+        description: Dense rank within projection_season ordered by proj_total_yards desc
+        tests:
+          - not_null
 
   - name: player_values
     description: >
