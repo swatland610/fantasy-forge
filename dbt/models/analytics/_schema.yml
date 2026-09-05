@@ -177,6 +177,16 @@ models:
         description: Within-position rank treated as the last startable player (rounded demand)
         tests:
           - not_null
+      - name: replacement_rank_used
+        description: >
+          The rank actually matched, after clamping to the projected pool size. Equals
+          replacement_rank normally; lower means the projected pool at that position was
+          shallower than demand, so the replacement level is optimistic (the pool ran out
+          before the last startable slot). Not-null here is the guard that a (league, position)
+          row exists at all -- player_values inner-joins this model, so a missing row would
+          otherwise delete that position from the board with every other test still passing.
+        tests:
+          - not_null
       - name: replacement_points
         description: Projected points of the replacement-rank player under the league format
         tests:
@@ -253,3 +263,11 @@ models:
       - name: is_projection_low_confidence
         tests:
           - not_null
+      - name: player_status
+        description: >
+          dim_players.status at build time (ACT, RES, RSN, EXE, CUT, PUP, DEV, ...). NULL when the
+          player has no dim_players row. Surfaced, never filtered on: status is current state with
+          no season key, so filtering would retroactively drop players from the 2021-2025 backtest
+          folds for being retired today (only 368 of 874 in the 2021 fold are ACT now). A live
+          draft board excludes season-ending statuses itself; which ones count is the consumer's
+          call, not this model's.

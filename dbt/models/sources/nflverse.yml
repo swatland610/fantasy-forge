@@ -7,6 +7,11 @@ sources:
     tables:
       - name: depth_charts
       - name: ff_playerids
+      - name: ff_rankings
+        description: >
+          FantasyPros expert consensus rankings (ECR), weekly snapshots since 2019. ecr_type
+          encodes the format/scope (rsf = redraft superflex, dsf = dynasty superflex, etc.);
+          scrape_date is the snapshot date; id is the FantasyPros player id.
       - name: injuries
       - name: pbp
       - name: players

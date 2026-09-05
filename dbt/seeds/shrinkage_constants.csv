@@ -1,0 +1,24 @@
+position,component,k,r,n_typ,fit_notes
+RB,yards_per_carry,510,0.23,150,YPC RB - shrink hard
+QB,yards_per_carry,135,0.33,67,QB designed-rush YPC
+WR,yards_per_target,210,0.29,84,YPT WR
+TE,yards_per_target,105,0.40,69,YPT TE - relatively sticky
+RB,yards_per_target,700,0.08,57,RB receiving YPT ~ noise; lean on volume
+WR,catch_rate,85,0.50,84,catch rate WR - real skill
+TE,catch_rate,98,0.41,69,catch rate TE
+RB,catch_rate,365,0.14,57,RB catch rate noisy
+QB,completion_pct,255,0.64,451,comp% - QB skill; light shrink
+QB,yards_per_attempt,549,0.45,451,Y/A QB
+QB,int_rate,1160,0.28,451,INT rate ~ noise
+RB,rush_td_rate,715,0.17,150,rush TD rate - bury in proxy
+QB,rush_td_rate,265,0.20,67,QB rush TD rate (designed-runner carve-out applies downstream)
+WR,rec_td_rate,430,0.16,84,rec TD rate WR
+TE,rec_td_rate,395,0.15,69,rec TD rate TE
+RB,rec_td_rate,305,0.16,57,rec TD rate RB
+QB,pass_td_rate,850,0.35,451,pass TD rate
+WR,rec_1d_rate,221,0.28,84,receiving first-down rate WR (PPFD)
+TE,rec_1d_rate,137,0.34,69,receiving first-down rate TE (PPFD)
+RB,rec_1d_rate,151,0.27,57,receiving first-down rate RB (PPFD)
+RB,rush_1d_rate,571,0.21,150,rushing first-down rate RB (PPFD)
+QB,rush_1d_rate,223,0.23,67,rushing first-down rate QB (PPFD)
+QB,sack_rate,517,0.49,495,QB sacks per dropback (SF sack penalty); season N->N+1 R=0.49 fit 2026-06-03
