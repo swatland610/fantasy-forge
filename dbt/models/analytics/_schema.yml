@@ -177,6 +177,16 @@ models:
         description: Within-position rank treated as the last startable player (rounded demand)
         tests:
           - not_null
+      - name: replacement_rank_used
+        description: >
+          The rank actually matched, after clamping to the projected pool size. Equals
+          replacement_rank normally; lower means the projected pool at that position was
+          shallower than demand, so the replacement level is optimistic (the pool ran out
+          before the last startable slot). Not-null here is the guard that a (league, position)
+          row exists at all -- player_values inner-joins this model, so a missing row would
+          otherwise delete that position from the board with every other test still passing.
+        tests:
+          - not_null
       - name: replacement_points
         description: Projected points of the replacement-rank player under the league format
         tests:
