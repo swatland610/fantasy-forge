@@ -11,6 +11,11 @@
 --
 -- Format notes:
 --   * 'ppfd' scores rushing/receiving first downs at +1 and pays 0 for receptions.
+--   * 'boc' = ppfd + a -1/sack QB penalty (sacks_suffered). sacks_suffered MUST stay in the melt
+--     below: scoring_rules prices it for boc, so omitting it silently overstated boc QB season
+--     totals by 22-47 points (2025: Josh Allen 417.6 here vs 377.6 in
+--     fct_player_season_fantasy_points, which does score it). The two models must agree -- the
+--     V-GATE backtest compares projected against actual points and depends on that symmetry.
 --   * passing_first_downs is intentionally never scored (would inflate QBs ~20+ pts/game).
 
 with components as (
@@ -24,6 +29,7 @@ with components as (
         passing_tds,
         passing_interceptions,
         passing_2pt_conversions,
+        sacks_suffered,
         rushing_yards,
         rushing_tds,
         rushing_2pt_conversions,
@@ -48,6 +54,7 @@ stats_long as (
         passing_tds,
         passing_interceptions,
         passing_2pt_conversions,
+        sacks_suffered,
         rushing_yards,
         rushing_tds,
         rushing_2pt_conversions,
