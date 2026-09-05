@@ -1,6 +1,30 @@
 version: 2
 
 models:
+  - name: preferred_analyst_lean
+    description: >
+      LIVE 2026-ONLY signal comparing player_values' model-driven position_rank against
+      your preferred analysts' (Cummings/Eisenberg/Gibbs) average position rank. Informational
+      only -- NOT blended into vorp. Positive lean = your analysts rank the player better than
+      the model; negative = the model likes them more. See the model's header comment for the
+      per-analyst rank normalization and why this can't extend to the 2021-2025 backtest folds.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - league_id
+            - player_id
+    columns:
+      - name: league_id
+        tests:
+          - not_null
+      - name: player_id
+        tests:
+          - not_null
+      - name: n_analysts
+        description: How many of your preferred analysts ranked this player -- a lean from 1 analyst is weaker evidence than one from 3
+        tests:
+          - not_null
+
   - name: fct_fantasy_points
     description: >
       Fantasy points per player-game per scoring format, computed by pivoting game-level
