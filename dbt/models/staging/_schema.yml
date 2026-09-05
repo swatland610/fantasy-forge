@@ -1,6 +1,36 @@
 version: 2
 
 models:
+  - name: stg_analysts__draft_rankings
+    description: >
+      Analyst snake-draft rankings (analyst_draft_rankings_2026 seed) crosswalked to
+      dim_players via normalized name + position + team. See the model's header comment
+      for the join strategy and known failure modes; unmatched rows are kept with
+      player_id = NULL rather than dropped.
+    columns:
+      - name: analyst
+        tests:
+          - not_null
+      - name: player_name
+        tests:
+          - not_null
+      - name: has_gsis_match
+        tests:
+          - not_null
+
+  - name: stg_analysts__auction_values
+    description: >
+      CBS Consensus auction $ values (cbs_consensus_auction_values seed) crosswalked to
+      dim_players via cbs_id -- an exact numeric-id join, no name normalization involved.
+    columns:
+      - name: cbs_id
+        tests:
+          - not_null
+          - unique
+      - name: has_gsis_match
+        tests:
+          - not_null
+
   - name: stg_nflverse__player_stats
     description: Player-level statistics per game week, cleaned from nflverse source
     columns:

@@ -1,6 +1,87 @@
 version: 2
 
 seeds:
+  - name: analyst_draft_rankings_2026
+    description: >
+      Manually collected 2026 snake-draft rankings from named fantasy analysts
+      (Heath Cummings, Jamey Eisenberg, Jacob Gibbs -- all CBS Sports). Grain:
+      one row per (analyst, player, source_url) -- an analyst can appear once
+      per position-specific article (e.g. Eisenberg has separate WR/RB/QB/TE
+      tier pages). overall_rank is only populated where the source gives a
+      single ordered list (Gibbs' top-175, Eisenberg's per-position tiers);
+      tier is populated where the source groups players into named tiers
+      instead of a strict 1-N rank (Cummings' QB/RB/TE tiers). Both can be
+      null for the same row's counterpart -- that's the source format, not
+      missing data. player is the analyst's own free-text name string and
+      does NOT reliably join to dim_players.display_name (suffixes,
+      punctuation, and at least one real nickname alias differ) --
+      stg_analysts__draft_rankings normalizes this; see that model's header
+      comment before joining on player_name directly.
+    config:
+      column_types:
+        overall_rank: integer
+        position_rank: integer
+        tier: integer
+        pulled_date: date
+    columns:
+      - name: analyst
+        tests:
+          - not_null
+      - name: player
+        tests:
+          - not_null
+      - name: source_url
+        tests:
+          - not_null
+
+  - name: cbs_consensus_auction_values
+    description: >
+      CBS Sports' blended "Consensus CBS Fantasy Experts" auction $ values
+      (PPR, top-200), scraped from the live rankings tool rather than a
+      byline article -- this is NOT Cummings/Eisenberg/Gibbs individually,
+      CBS does not publish a separate auction sheet per analyst. Grain: one
+      row per cbs_id. Total auction budget size is unconfirmed (CBS doesn't
+      state it on the page) -- verify against your own league's budget before
+      using these dollar values as bid targets. cbs_id is the CBS numeric
+      player id (from the player's profile URL) and joins cleanly 1:1 to
+      stg_nflverse__ff_playerids.cbs_id -- no name normalization needed for
+      this seed, unlike analyst_draft_rankings_2026.
+    config:
+      column_types:
+        cbs_id: integer
+        bye_week: integer
+        overall_rank: integer
+        auction_value_dollar: integer
+        pulled_date: date
+    columns:
+      - name: cbs_id
+        tests:
+          - not_null
+          - unique
+      - name: overall_rank
+        tests:
+          - not_null
+          - unique
+
+  - name: analyst_name_aliases
+    description: >
+      Manual crosswalk for player names in analyst_draft_rankings_2026 that
+      still don't match dim_players.display_name after stripping punctuation
+      and generational suffixes (Jr./Sr./II/III/IV) -- true nicknames/spelling
+      variants, e.g. Jamey Eisenberg's "Chigoziem Okonkwo" vs dim_players'
+      "Chig Okonkwo". Expected to grow slowly as more analysts/seasons are
+      added; add a row here only after confirming normalization genuinely
+      can't resolve the mismatch (check stg_analysts__draft_rankings' unmatched
+      output first).
+    columns:
+      - name: source_name
+        tests:
+          - not_null
+      - name: canonical_display_name
+        description: Must match dim_players.display_name exactly
+        tests:
+          - not_null
+
   - name: scoring_rules
     description: >
       Long-format fantasy scoring configuration. Grain: one row per
