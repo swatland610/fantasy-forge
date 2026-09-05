@@ -171,16 +171,23 @@ async def waiver(
         await interaction.followup.send("No trending players found.")
         return
 
+    # dim_players.sleeper_id is BIGINT, but Sleeper uses the team abbreviation as the
+    # player_id for team defenses ("SF", "NE"), and those appear in the trending feed.
+    # Comparing them against a BIGINT column raises ConversionException mid-command --
+    # after defer(), so the user just sees a hung interaction. Cast the column instead of
+    # the parameters so defenses simply miss the lookup rather than killing the query.
     placeholders = ", ".join(["?" for _ in sleeper_ids])
     enriched = query_db(
         f"""
         SELECT sleeper_id, display_name, position, team
         FROM core.dim_players
-        WHERE sleeper_id IN ({placeholders})
+        WHERE CAST(sleeper_id AS VARCHAR) IN ({placeholders})
         """,
         tuple(sleeper_ids),
     )
-    by_sleeper_id = {r["sleeper_id"]: r for r in enriched}
+    # keys must be str to match the str(player_id) lookup below -- DuckDB returns BIGINT
+    # as Python int, so keying on the raw value made every lookup miss silently
+    by_sleeper_id = {str(r["sleeper_id"]): r for r in enriched}
 
     rows = []
     for i, t in enumerate(trending[:limit], 1):
