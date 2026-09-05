@@ -160,6 +160,22 @@ derived as (
         -- projected games: recency-weighted, lightly regressed toward the position durability
         -- anchor, capped at a 17-game season.
         -- PLACEHOLDER 0.75/0.25 blend -- durability was not in the stability analysis; tune at V-GATE.
+        --
+        -- KNOWN BIAS (measured 2026-09-05, deliberately not fixed): baseline_games is computed
+        -- in int_projection__position_baselines under `games_played >= 8`, i.e. starters only,
+        -- but it is blended into EVERY player here. A 3-game player is pulled toward the mean
+        -- games of players who by definition played 8+, inflating his projected games and every
+        -- counting stat derived from them.
+        --
+        -- DO NOT "fix" this by computing the anchor over the full population -- that was tried
+        -- and it merely inverts the bias, dragging durable players toward a mean that includes
+        -- everyone who got hurt. Measured: no 2026 player then projected above 15.4 games, and
+        -- Bijan Robinson (17/17/17 in three straight seasons) fell 16.3 -> 15.3.
+        --
+        -- The correct fix is an evidence-weighted blend rather than a fixed 0.25: three 17-game
+        -- seasons should barely regress, three games should regress hard. That is exactly what
+        -- reliability_shrink() does for rates, but durability has no fitted k -- it needs
+        -- calibration against the 2021-2025 folds, not another guess.
         least(
             17.0,
             0.75 * (agg.d_games / nullif(agg.w_total, 0))
