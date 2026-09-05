@@ -3,6 +3,12 @@
 -- Crosswalk is exact: cbs_id is CBS's own numeric player id, joined straight to
 -- stg_nflverse__ff_playerids.cbs_id. No name normalization needed here, unlike
 -- stg_analysts__draft_rankings -- confirmed 200/200 clean matches during initial load.
+--
+-- stg_nflverse__ff_playerids is NOT unique on cbs_id (a handful of cbs_ids map to two
+-- distinct player_ids upstream) -- deduped here with a deterministic tiebreaker (lowest
+-- player_id) so this model's own documented one-row-per-cbs_id grain actually holds,
+-- rather than silently fanning out the next time a seed refresh happens to include one
+-- of the affected ids.
 
 with source as (
 
@@ -16,6 +22,7 @@ crosswalk as (
     select cbs_id, player_id
     from {{ ref('stg_nflverse__ff_playerids') }}
     where cbs_id is not null
+    qualify row_number() over (partition by cbs_id order by player_id) = 1
 
 )
 

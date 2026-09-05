@@ -72,7 +72,16 @@ seeds:
       "Chig Okonkwo". Expected to grow slowly as more analysts/seasons are
       added; add a row here only after confirming normalization genuinely
       can't resolve the mismatch (check stg_analysts__draft_rankings' unmatched
-      output first).
+      output first). Joined on (source_name, position) only -- NOT team, which is
+      exactly as unreliable in this seed as it is in analyst_draft_rankings_2026
+      itself (see stg_analysts__draft_rankings' header). The team column here is
+      informational/provenance only (what the analyst stated when the alias was
+      authored), not part of the join key.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - source_name
+            - position
     columns:
       - name: source_name
         tests:

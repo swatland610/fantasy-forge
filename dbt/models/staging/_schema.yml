@@ -4,13 +4,19 @@ models:
   - name: stg_analysts__draft_rankings
     description: >
       Analyst snake-draft rankings (analyst_draft_rankings_2026 seed) crosswalked to
-      dim_players via normalized name + position + team. See the model's header comment
-      for the join strategy and known failure modes; unmatched rows are kept with
-      player_id = NULL rather than dropped.
+      dim_players via normalized name + position, with team as a tiebreaker only. See the
+      model's header comment for the join strategy and known failure modes; unmatched rows
+      are kept with player_id = NULL rather than dropped.
     columns:
       - name: analyst
         tests:
           - not_null
+      - name: was_aliased
+        description: True when player_name came from analyst_name_aliases, not the raw source text -- never coalesce without a flag
+        tests:
+          - not_null
+      - name: normalized_position_rank
+        description: Single per-(analyst, position) ordinal rank, normalized across each source's rank/tier format -- see model header
       - name: player_name
         tests:
           - not_null
