@@ -1,0 +1,12 @@
+# Matches the Ghostty "Monokai Pro Octagon" theme (see ~/.config/ghostty/config),
+# which cmux inherits rather than overriding.
+[theme]
+base = "dark"
+backgroundColor = "#282a3a"
+secondaryBackgroundColor = "#31323f"
+textColor = "#eaf2f1"
+primaryColor = "#bad761"
+font = "monospace"
+
+[server]
+runOnSave = true
