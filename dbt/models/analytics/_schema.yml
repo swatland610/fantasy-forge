@@ -1,6 +1,36 @@
 version: 2
 
 models:
+  - name: player_auction_prices
+    description: >
+      Cool Place-specific $250/team (x12 = $3,000) auction price ceiling. Two-part
+      concentration model: QB keeps the original hand-anchored gamma=0.78 (no superflex
+      market data exists to fit against); RB/WR/TE uses gamma=0.595, fit by log-log OLS
+      against real CBS Consensus auction $ (stg_analysts__auction_values) -- see
+      scripts/fit_auction_gamma.py. Pool caps QB 32 / RB 49 / WR 54 / TE 16. Grain: one row
+      per player_id within those capped pools for the live 2026 Cool Place board only --
+      unlike player_values, not parameterized across leagues/seasons.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - player_id
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: auction_price
+        description: Dollar price ceiling, floored at $1 (Sleeper's minimum bid)
+        tests:
+          - not_null
+
   - name: preferred_analyst_lean
     description: >
       LIVE 2026-ONLY signal comparing player_values' model-driven position_rank against

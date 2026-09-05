@@ -24,11 +24,17 @@ select
     dp.display_name as player,
     dp.team,
     pv.position,
+    ap.auction_price as price,
     pv.vorp,
     pv.overall_rank as rank,
-    pv.position_rank as pos_rank
+    pv.position_rank as pos_rank,
+    lean.lean as analyst_lean,
+    lean.n_analysts
 from analytics.player_values pv
 join core.dim_players dp on dp.player_id = pv.player_id
+left join analytics.player_auction_prices ap on ap.player_id = pv.player_id
+left join analytics.preferred_analyst_lean lean
+    on lean.player_id = pv.player_id and lean.league_id = pv.league_id
 where pv.league_id = ?
   and pv.projection_season = 2026
   and pv.player_status = 'ACT'
@@ -36,8 +42,8 @@ where pv.league_id = ?
     select 1 from main.drafted_picks d
     where try_cast(d.sleeper_player_id as bigint) = dp.sleeper_id
   )
-order by pv.vorp desc
-limit 50
+order by ap.auction_price desc nulls last, pv.vorp desc
+limit 60
 """
 
 BUDGET_SQL = """
@@ -89,6 +95,16 @@ def style_remaining(val):
     return "color: #bad761"  # green — plenty left
 
 
+def style_lean(val):
+    if pd.isna(val):
+        return ""
+    if val >= 15:
+        return "color: #bad761"  # your analysts like this player a lot more than the model
+    if val <= -15:
+        return "color: #ff657a"  # your analysts like this player a lot less than the model
+    return ""
+
+
 args = parse_args()
 
 st.set_page_config(page_title="Cool Place — Live Draft", layout="wide")
@@ -113,7 +129,7 @@ with col1:
     else:
         st.dataframe(
             budget_df.style.map(style_remaining, subset=["remaining"]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -122,16 +138,33 @@ with col2:
     if recent_df.empty:
         st.info("No picks yet.")
     else:
-        st.dataframe(recent_df, use_container_width=True, hide_index=True)
+        st.dataframe(recent_df, width="stretch", hide_index=True)
 
-st.subheader("Best remaining players (VORP, undrafted)")
-st.dataframe(board_df, use_container_width=True, hide_index=True, height=600)
+st.subheader("Best remaining players (undrafted)")
+st.dataframe(
+    board_df.style.map(style_lean, subset=["analyst_lean"]),
+    width="stretch",
+    hide_index=True,
+    height=650,
+    column_config={
+        "price": st.column_config.NumberColumn("price ceiling", format="$%d"),
+        "analyst_lean": st.column_config.NumberColumn(
+            "analyst lean",
+            help="Your preferred analysts' avg position rank minus the model's. "
+            "Positive = they like this player more than VORP does.",
+        ),
+        "n_analysts": st.column_config.NumberColumn("# analysts", help="How many of your analysts ranked this player"),
+    },
+)
 
 st.caption(
-    "Ranked by VORP, not the hand-tuned $ auction prices in the Obsidian "
-    "draft-board note — those aren't in the warehouse (ad-hoc downstream calc, "
-    "not a dbt model). Cross-reference the Sheet/Obsidian board for $ targets; "
-    "use this for live 'who's still on the board' and budget tracking."
+    "Price ceiling: $250-budget auction model — QB keeps the original hand-anchored "
+    "gamma (no superflex market data to fit against); RB/WR/TE is fit against real CBS "
+    "Consensus auction $ (moderate fit, r²≈0.33 — a calibrated estimate, not a verified "
+    "one). Only ~90 players clear replacement level and get priced; everyone else is an "
+    "implied $1 fill. Analyst lean: Cummings/Eisenberg/Gibbs vs. the model — see "
+    "dbt/models/analytics/player_auction_prices.sql and preferred_analyst_lean.sql for "
+    "the full methodology."
 )
 
 time.sleep(REFRESH_SECONDS)
