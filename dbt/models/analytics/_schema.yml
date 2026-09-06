@@ -1,6 +1,99 @@
 version: 2
 
 models:
+  - name: market_priced_player_values
+    description: >
+      Cool Place-specific, live-season-only price estimate for every player the VORP engine's
+      own-history projection can't be trusted for, split by `reason`: 'rookie' (absent from
+      player_values entirely -- no NFL season history to build from, a deliberate V3 scope gap)
+      or 'situation_change' (present in player_values, but their trailing-history team no longer
+      matches their current roster team -- their own-history opportunity reflects a situation
+      they've left, and a tested team-volume rescale (scripts/fit_team_change_blend.py) did not
+      improve on it). Both are priced from CBS $ (scaled the same way as the veteran CBS proxy
+      in player_auction_prices.sql) where it exists; avg_analyst_position_rank from your
+      preferred analysts otherwise/additionally. estimated_price is NULL, not fabricated, for a
+      player with analyst coverage but no CBS $ at all. NOT part of player_auction_prices'
+      $3,000 budget-conservation invariant -- priced independently, a deliberate scope choice
+      (see model header).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - player_id
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: reason
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['rookie', 'situation_change']
+
+  - name: superflex_mock_lean
+    description: >
+      All-position (QB/RB/WR/TE), live-season analog of preferred_analyst_lean, sourced from
+      stg_superflex_mock__draft_capital (a real 12-team superflex mock draft's full pick
+      order) instead of Cummings/Eisenberg/Gibbs. Originally QB-only (their standard-league
+      rankings can't be rescaled into a superflex-specific order -- see
+      player_auction_prices.sql); generalized to all positions 2026-09-06 once the mock was
+      re-transcribed in full. Treats the mock's real revealed-preference pick order as its
+      own independent rank source. n=1 mock, not a market consensus -- see the model header
+      and mock_extraction_flagged.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - league_id
+            - player_id
+    columns:
+      - name: league_id
+        tests:
+          - not_null
+      - name: player_id
+        tests:
+          - not_null
+      - name: mock_position_rank
+        description: Players ranked by the mock's pick_no ascending WITHIN position (pick order restarts at 1 per position)
+        tests:
+          - not_null
+
+  - name: player_auction_prices
+    description: >
+      Cool Place-specific $250/team (x12 = $3,000) auction price ceiling. Two-part
+      concentration model: QB keeps the original hand-anchored gamma=0.78 (no superflex
+      market data exists to fit against); RB/WR/TE uses gamma=0.595, fit by log-log OLS
+      against real CBS Consensus auction $ (stg_analysts__auction_values) -- see
+      scripts/fit_auction_gamma.py. Pool caps QB 32 / RB 49 / WR 54 / TE 16. Grain: one row
+      per player_id within those capped pools for the live 2026 Cool Place board only --
+      unlike player_values, not parameterized across leagues/seasons.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - player_id
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+      - name: auction_price
+        description: Dollar price ceiling, floored at $1 (Sleeper's minimum bid)
+        tests:
+          - not_null
+
   - name: preferred_analyst_lean
     description: >
       LIVE 2026-ONLY signal comparing player_values' model-driven position_rank against
@@ -126,7 +219,14 @@ models:
         tests:
           - not_null
       - name: projected_games
-        description: Recency-weighted projected games, regressed toward the position durability anchor (capped 17)
+        description: >
+          Recency-weighted projected games, reliability-shrunk toward the position durability
+          anchor with a fitted per-position k (capped 17). Evidence (n) is scaled by a
+          consistency factor (games_variance vs. the position's population-average variance,
+          capped 0.5x-2.0x) so a player with an unusually clean, low-variance record is
+          trusted more than the population-average reliability alone would allow -- see the
+          model's column comment, scripts/fit_durability_shrinkage.py, and
+          scripts/fit_durability_consistency.py.
         tests:
           - not_null
 

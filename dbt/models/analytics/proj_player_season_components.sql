@@ -17,8 +17,9 @@
 --   1. OPPORTUNITY is sticky (V-GATE measured R ~ 0.6-0.8), so per-game volume
 --      (carries/targets/attempts per game) is RECENCY-WEIGHTED across the last 3 seasons and
 --      leaned on directly -- NOT shrunk toward a position mean.
---   2. projected_games is recency-weighted, lightly regressed toward the position durability
---      anchor (durability has weak YoY signal). -- see PLACEHOLDER note below.
+--   2. projected_games is recency-weighted, reliability-shrunk toward the position durability
+--      anchor via reliability_shrink() with a fitted k (durability has real but modest YoY
+--      signal, R ~ 0.39-0.64 by position) -- see the projected_games column note below.
 --   3. EFFICIENCY / TD / first-down RATES are noisy, so the player's recency-weighted own-rate
 --      is pulled toward the position baseline via reliability_shrink() with the fitted k's
 --      (seed: shrinkage_constants). TD rates have huge k -> projected TDs ~ volume x league rate
@@ -46,8 +47,8 @@
 --   sub-model. Rookies / no-history players are absent here by construction (they have no window
 --   rows); thin-history returners are flagged is_projection_low_confidence, not faked. Kickers
 --   are excluded (no scored components in scoring_rules). 2pt/fumble/first-down minor rates are
---   league-rate driven. All tunable constants (k's, the 0.75/0.25 durability blend) are
---   provisional until the V-GATE backtest.
+--   league-rate driven. All fitted shrinkage k's (including durability_games as of 2026-09-05)
+--   come from scripts/fit_durability_shrinkage.py / the V-GATE stability analysis, not guesses.
 
 {% set projection_seasons = var('projection_seasons', [2021, 2022, 2023, 2024, 2025, 2026]) %}
 
@@ -101,6 +102,14 @@ agg as (
         sum(decay)                as w_total,
         sum(decay * games_played) as d_games,
 
+        -- UNWEIGHTED population variance of this player's own trailing games_played --
+        -- deliberately not decay-weighted (want raw season-to-season spread, not a
+        -- recency-tilted one) and deliberately NOT restricted to games_played >= 8 the way
+        -- int_projection__position_baselines is (a durability-consistency measure needs the
+        -- short/injury seasons IN the sample -- that filter would hide the very seasons that
+        -- create variance). See the projected_games column note below for why this exists.
+        var_pop(games_played) as games_variance,
+
         -- decayed opportunity denominators (also the n_eff for each rate's shrinkage)
         sum(decay * pass_attempts) as d_attempts,
         sum(decay * carries)       as d_carries,
@@ -124,6 +133,22 @@ agg as (
 
 ),
 
+pop_durability_variance as (
+
+    -- population-average games_variance per (projection_season, position) -- the denominator
+    -- of the consistency factor below. Averaged over players with >=2 contributing seasons
+    -- only (a single-season "variance" of 0 is not evidence of consistency, just an absent
+    -- second data point -- see the projected_games note).
+    select
+        projection_season,
+        position,
+        avg(games_variance) as pop_avg_games_variance
+    from agg
+    where seasons_of_history >= 2
+    group by projection_season, position
+
+),
+
 k_wide as (
 
     -- pivot the (position, component) shrinkage seed to one row per position
@@ -140,7 +165,8 @@ k_wide as (
         max(k) filter (where component = 'catch_rate')        as k_catch,
         max(k) filter (where component = 'yards_per_target')  as k_ypt,
         max(k) filter (where component = 'rec_td_rate')       as k_rec_td,
-        max(k) filter (where component = 'rec_1d_rate')       as k_rec_1d
+        max(k) filter (where component = 'rec_1d_rate')       as k_rec_1d,
+        max(k) filter (where component = 'durability_games')  as k_durability
     from {{ ref('shrinkage_constants') }}
     group by position
 
@@ -157,29 +183,74 @@ derived as (
         agg.seasons_of_history,
         agg.played_prev_season,
 
-        -- projected games: recency-weighted, lightly regressed toward the position durability
-        -- anchor, capped at a 17-game season.
-        -- PLACEHOLDER 0.75/0.25 blend -- durability was not in the stability analysis; tune at V-GATE.
+        -- projected games: reliability-weighted blend of the player's own decay-weighted
+        -- trailing average (agg.d_games / agg.w_total) toward the position durability anchor
+        -- (b.baseline_games, starters-only per int_projection__position_baselines), capped at
+        -- a 17-game season.
         --
-        -- KNOWN BIAS (measured 2026-09-05, deliberately not fixed): baseline_games is computed
-        -- in int_projection__position_baselines under `games_played >= 8`, i.e. starters only,
-        -- but it is blended into EVERY player here. A 3-game player is pulled toward the mean
-        -- games of players who by definition played 8+, inflating his projected games and every
-        -- counting stat derived from them.
+        -- FIT 2026-09-05 (scripts/fit_durability_shrinkage.py, see shrinkage_constants seed for
+        -- the k/R/n_typ per position): n = agg.w_total, the decayed SEASON-count -- the same
+        -- role d_carries/d_attempts/d_targets play for every other shrunk rate here (n is
+        -- always the decayed denominator underlying the observed ratio). R was measured by
+        -- correlating this exact trailing average against a player's ACTUAL held-out season
+        -- games, replicating the model's own windowing -- not guessed.
         --
-        -- DO NOT "fix" this by computing the anchor over the full population -- that was tried
-        -- and it merely inverts the bias, dragging durable players toward a mean that includes
-        -- everyone who got hurt. Measured: no 2026 player then projected above 15.4 games, and
-        -- Bijan Robinson (17/17/17 in three straight seasons) fell 16.3 -> 15.3.
+        -- REPLACES a prior fixed 0.75/0.25 blend, measured to inflate short-history players
+        -- toward the starter-only baseline (a 3-game player pulled toward players who by
+        -- definition played 8+) while under-trusting proven full-history durable players
+        -- relative to what their own record supports. This fix makes the weight scale with
+        -- how much trailing history exists (agg.w_total, 0 to 2.0), rather than being flat
+        -- for every player regardless of evidence.
         --
-        -- The correct fix is an evidence-weighted blend rather than a fixed 0.25: three 17-game
-        -- seasons should barely regress, three games should regress hard. That is exactly what
-        -- reliability_shrink() does for rates, but durability has no fitted k -- it needs
-        -- calibration against the 2021-2025 folds, not another guess.
+        -- WHAT THIS DOES NOT FIX: a genuinely short recent season (real missed time) still
+        -- pulls the trailing average down -- that's real signal properly reflected, not a
+        -- shrinkage bug. E.g. an 8-game season two years running still projects below-average
+        -- games; this fix corrects HOW MUCH we trust a player's own record given their amount
+        -- of history, not what that record itself says happened.
+        --
+        -- MANUAL OVERRIDE (durability_overrides_2026 seed, stg_durability_overrides): games_played
+        -- alone can't distinguish "two unrelated freak injuries" from "chronically fragile" --
+        -- both look identical to this model. Building a real injury-chronicity classifier is out
+        -- of scope (same category as the documented "no aging curve" cut, and
+        -- stg_nflverse__injuries doesn't cover the current season yet). Where a human has
+        -- confirmed the distinction for a specific player (with a written reason in the seed),
+        -- override_games replaces the fitted estimate outright -- a deliberate, auditable
+        -- judgment call, not a silent pipeline hack. Empty for every player by default.
+        --
+        -- CONSISTENCY-ADJUSTED EVIDENCE (added 2026-09-06): k_durability was fit against
+        -- POPULATION-average reliability -- a player with an unusually clean, low-variance
+        -- record (e.g. three straight 17-game seasons) was trusted at the SAME rate as a
+        -- typical player, because the n/(n+k) formula only sees volume of evidence (agg.w_total),
+        -- never how CONSISTENT that evidence has been. Measured 2026-09-06
+        -- (scripts/fit_durability_consistency.py): splitting the historical fit sample into
+        -- low-variance vs high-variance halves shows real, meaningfully higher reliability for
+        -- consistent players at every position (e.g. RB: R=0.385 consistent vs 0.258 erratic;
+        -- QB: 0.742 vs 0.513) -- this is a real, validated signal, not a guess.
+        --
+        -- consistency_factor scales the EVIDENCE (agg.w_total), not the observed value itself:
+        -- pop_avg_games_variance / (agg.games_variance + 0.1), capped to [0.5x, 2.0x]. The 0.1
+        -- epsilon and the cap are judgment-call guardrails (undocumented in the fit script,
+        -- flagged here) -- without them a perfectly flat 2-3 season record (games_variance = 0,
+        -- e.g. Bijan Robinson's 17/17/17) would divide by zero / extrapolate to an unbounded
+        -- multiplier. Only applied with >=2 contributing seasons -- a single season has no
+        -- variance to measure, and should get NEITHER a consistency boost nor a penalty
+        -- (factor defaults to 1.0, i.e. today's already-fitted behavior, unchanged).
         least(
             17.0,
-            0.75 * (agg.d_games / nullif(agg.w_total, 0))
-          + 0.25 * b.baseline_games
+            coalesce(
+                ov.override_games,
+                {{ reliability_shrink(
+                    'agg.d_games / nullif(agg.w_total, 0)',
+                    'b.baseline_games',
+                    '(case
+                        when agg.seasons_of_history < 2 then agg.w_total
+                        else agg.w_total * least(2.0, greatest(0.5,
+                            pdv.pop_avg_games_variance / nullif(agg.games_variance + 0.1, 0)
+                        ))
+                    end)',
+                    'k.k_durability'
+                ) }}
+            )
         ) as projected_games,
 
         -- projected per-game opportunity (games-weighted; sticky -> used directly, not shrunk)
@@ -222,6 +293,10 @@ derived as (
     join {{ ref('int_projection__position_baselines') }} as b
         using (projection_season, position)
     left join k_wide as k using (position)
+    left join {{ ref('stg_durability_overrides') }} as ov
+        on ov.player_id = agg.player_id and ov.has_gsis_match
+    left join pop_durability_variance as pdv
+        using (projection_season, position)
 
 ),
 

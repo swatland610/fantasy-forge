@@ -22,3 +22,7 @@ RB,rec_1d_rate,151,0.27,57,receiving first-down rate RB (PPFD)
 RB,rush_1d_rate,571,0.21,150,rushing first-down rate RB (PPFD)
 QB,rush_1d_rate,223,0.23,67,rushing first-down rate QB (PPFD)
 QB,sack_rate,517,0.49,495,QB sacks per dropback (SF sack penalty); season N->N+1 R=0.49 fit 2026-06-03
+QB,durability_games,1,0.644,2,"n is DECAYED SEASON-COUNT (w_total, max 2.0 for full 3yr history), not an opportunity count like other rows -- fit 2026-09-05 via scripts/fit_durability_shrinkage.py, replacing the prior fixed 0.75/0.25 durability blend"
+RB,durability_games,3,0.394,2,"n is DECAYED SEASON-COUNT (w_total) -- see QB durability_games note; RB durability is noisier (workload attrition) than QB (injury-driven)"
+WR,durability_games,3,0.423,2,"n is DECAYED SEASON-COUNT (w_total) -- see QB durability_games note"
+TE,durability_games,2,0.519,2,"n is DECAYED SEASON-COUNT (w_total) -- see QB durability_games note"
