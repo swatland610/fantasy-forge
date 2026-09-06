@@ -24,6 +24,25 @@ models:
         tests:
           - not_null
 
+  - name: stg_superflex_mock__qb_capital
+    description: >
+      One real 12-team superflex mock draft's QB pick order (superflex_mock_qb_capital_2026
+      seed), crosswalked to dim_players via normalized name. Real revealed-preference
+      superflex QB demand -- CBS's own auction-value sheet has none. n=1 mock, and several
+      rows have flagged extraction uncertainty (see extraction_flagged / notes and the
+      model header) -- treat pick_no as directional, not exact.
+    columns:
+      - name: player_name
+        tests:
+          - not_null
+      - name: has_gsis_match
+        tests:
+          - not_null
+      - name: pick_no
+        tests:
+          - not_null
+          - unique
+
   - name: stg_analysts__auction_values
     description: >
       CBS Consensus auction $ values (cbs_consensus_auction_values seed) crosswalked to

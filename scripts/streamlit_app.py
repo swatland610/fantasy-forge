@@ -131,7 +131,9 @@ select
     pc.passing_completions,
     pc.passing_yards,
     pc.passing_tds,
-    pc.passing_interceptions
+    pc.passing_interceptions,
+    mock.pick_no as superflex_mock_pick,
+    mock.extraction_flagged as superflex_mock_flagged
 from core.dim_players dp
 join analytics.player_values pv
     on pv.player_id = dp.player_id and pv.league_id = ? and pv.projection_season = ?
@@ -141,6 +143,8 @@ left join analytics.proj_player_fantasy_points fp
     on fp.player_id = dp.player_id and fp.projection_season = ? and fp.format_name = 'half_ppr'
 left join analytics.proj_player_season_components pc
     on pc.player_id = dp.player_id and pc.projection_season = ?
+left join staging.stg_superflex_mock__qb_capital mock
+    on mock.player_id = dp.player_id and mock.has_gsis_match
 where dp.player_id = ?
 """
 
@@ -149,6 +153,23 @@ select analyst, normalized_position_rank as position_rank, tier, overall_rank
 from staging.stg_analysts__draft_rankings
 where player_id = ? and has_gsis_match
 order by analyst
+"""
+
+QB_SUPERFLEX_MOCK_SQL = """
+select
+    dp.display_name as player,
+    mock.pick_no,
+    pv.overall_rank as our_overall_rank,
+    pv.vorp,
+    ap.auction_price as price,
+    mock.extraction_flagged
+from staging.stg_superflex_mock__qb_capital mock
+join core.dim_players dp on dp.player_id = mock.player_id
+left join analytics.player_values pv
+    on pv.player_id = mock.player_id and pv.league_id = ? and pv.projection_season = ?
+left join analytics.player_auction_prices ap on ap.player_id = mock.player_id
+where mock.has_gsis_match
+order by mock.pick_no
 """
 
 # Position-appropriate projected-stat columns, in display order.
@@ -376,6 +397,16 @@ if selected_label:
             help=cbs_help if pd.notna(row.cbs_price) else "No CBS Consensus value for this player.",
         )
 
+        if is_qb and pd.notna(row.superflex_mock_pick):
+            flagged = " ⚠️" if row.superflex_mock_flagged else ""
+            st.caption(
+                f"Superflex mock draft capital: pick {int(row.superflex_mock_pick)}{flagged} "
+                "— from a single real 12-team superflex mock (12 different drafters), not a "
+                "stated ranking. Real revealed-preference superflex QB demand, since CBS's own "
+                "$ sheet has none."
+                + (" This pick has flagged extraction uncertainty — see the seed's notes." if row.superflex_mock_flagged else "")
+            )
+
         proj_points = f"{row.proj_fantasy_points:.1f}" if pd.notna(row.proj_fantasy_points) else "—"
         st.markdown(f"**Projected 2026 fantasy points (half-PPR):** {proj_points}")
         if pd.notna(row.projected_games):
@@ -411,3 +442,31 @@ if selected_label:
             )
         else:
             st.caption("None of your preferred analysts ranked this player.")
+
+st.divider()
+st.subheader("QB: our model vs. real superflex mock draft capital")
+st.caption(
+    "Single 12-team superflex mock (12 different drafters, real revealed-preference "
+    "draft capital) vs. our own VORP/price. Useful for sanity-checking the model's QB "
+    "order independent of our own pipeline — e.g. this is what surfaced Bo Nix ranking "
+    "above Josh Allen in our model despite going 56 picks later here. n=1 mock, not a "
+    "market consensus — ⚠️ marks picks with flagged extraction uncertainty."
+)
+qb_mock_con = connect_readonly(args.db_path)
+try:
+    qb_mock_df = qb_mock_con.execute(QB_SUPERFLEX_MOCK_SQL, [args.league_id, args.season]).fetch_df()
+finally:
+    qb_mock_con.close()
+
+qb_mock_df["flag"] = qb_mock_df["extraction_flagged"].map(lambda x: "⚠️" if x else "")
+st.dataframe(
+    qb_mock_df.drop(columns=["extraction_flagged"]),
+    width="stretch",
+    hide_index=True,
+    column_config={
+        "pick_no": st.column_config.NumberColumn("mock pick"),
+        "our_overall_rank": st.column_config.NumberColumn("our overall rank"),
+        "price": st.column_config.NumberColumn("our price", format="$%d"),
+        "flag": st.column_config.TextColumn(" ", help="Flagged extraction uncertainty — see the seed's notes"),
+    },
+)

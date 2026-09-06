@@ -1,0 +1,34 @@
+player_name,pick_no,drafter,source_url,pulled_date,notes
+Josh Allen,1,Meron Berkson,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Lamar Jackson,2,Jack Capotorto,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Drake Maye,7,R.J. White,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Joe Burrow,8,Jake Grogins,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Jayden Daniels,20,Robert Thomas,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,"pick_no from a first extraction pass; missing from a second re-extraction of the same article -- flagged, not independently confirmed"
+Dak Prescott,15,Tommy Tran,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Jalen Hurts,16,Todd Fuhrman,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Justin Herbert,17,Jake Grogins,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Trevor Lawrence,23,Jack Capotorto,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Caleb Williams,28,Dan Schneier,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Brock Purdy,30,Jamey Eisenberg,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Jared Goff,46,Adam Aizer,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Bo Nix,57,Todd Fuhrman,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Patrick Mahomes,60,Production Squad FC,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Jordan Love,61,Production Squad FC,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Matthew Stafford,63,Tommy Tran,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Kyler Murray,67,Jamey Eisenberg,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Baker Mayfield,69,Dan Schneier,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Tyler Shough,70,Adam Aizer,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,"extracted as ""T. Shough""/""Tanner Shough"" across passes -- his real name is Tyler Shough"
+Marcus Mariota,73,Meron Berkson,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Daniel Jones,75,Adam Aizer,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+C.J. Stroud,76,Heath Cummings,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,"also extracted as pick 83 in the same pass -- kept the earlier pick, likely one is a duplicate/transcription artifact"
+Jacoby Brissett,90,R.J. White,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,"extracted as ""J. Brissett"""
+Sam Darnold,91,Jamey Eisenberg,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Aaron Rodgers,93,Dan Schneier,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Cameron Ward,96,Meron Berkson,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,"extracted as ""Caleb Ward"" -- no NFL QB by that name; almost certainly Cameron Ward (Titans rookie)"
+Geno Smith,103,R.J. White,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Bryce Young,107,Heath Cummings,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Michael Penix,110,Heath Cummings,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,"extracted as ""Michael Penix Jr."""
+Tua Tagovailoa,134,Heath Cummings,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Kirk Cousins,159,Tommy Tran,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Deshaun Watson,161,Jake Grogins,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,
+Shedeur Sanders,164,Robert Thomas,https://www.cbssports.com/fantasy/football/news/2026-fantasy-football-12-team-superflex-mock/,2026-09-05,"extracted as ""Sanders"" only -- inferred to be Shedeur Sanders from a separate CBS article about this same mock mentioning him"
