@@ -59,13 +59,13 @@ select
     pv.vorp,
     pv.overall_rank as rank,
     pv.position_rank as pos_rank,
-    lean.lean as analyst_lean,
-    lean.n_analysts
+    sml.mock_pick_no,
+    sml.lean as mock_lean
 from analytics.player_values pv
 join core.dim_players dp on dp.player_id = pv.player_id
 left join analytics.player_auction_prices ap on ap.player_id = pv.player_id
-left join analytics.preferred_analyst_lean lean
-    on lean.player_id = pv.player_id and lean.league_id = pv.league_id
+left join analytics.superflex_mock_qb_lean sml
+    on sml.player_id = pv.player_id and sml.league_id = pv.league_id
 where pv.league_id = ?
   and pv.projection_season = ?
   and pv.player_status = 'ACT'
@@ -302,19 +302,23 @@ def live_board():
 
     st.subheader("Best remaining players (undrafted)")
     st.dataframe(
-        board_df.style.map(style_lean, subset=["analyst_lean"]),
+        board_df.style.map(style_lean, subset=["mock_lean"]),
         width="stretch",
         hide_index=True,
         height=650,
         column_config={
             "price": st.column_config.NumberColumn("price ceiling", format="$%d"),
-            "analyst_lean": st.column_config.NumberColumn(
-                "analyst lean",
-                help="Your preferred analysts' avg position rank minus the model's. "
-                "Positive = they like this player more than VORP does.",
+            "mock_pick_no": st.column_config.NumberColumn(
+                "mock pick",
+                help="QB only: this player's pick number in a real 12-team superflex mock "
+                "draft (12 different drafters) -- blank for RB/WR/TE, which the mock doesn't "
+                "cover.",
             ),
-            "n_analysts": st.column_config.NumberColumn(
-                "# analysts", help="How many of your analysts ranked this player"
+            "mock_lean": st.column_config.NumberColumn(
+                "mock lean",
+                help="QB only: our VORP-based position rank minus the mock's pick-order "
+                "position rank. Positive = the mock's drafters valued this QB higher than "
+                "our model does.",
             ),
         },
     )
@@ -324,9 +328,9 @@ def live_board():
         "gamma (no superflex market data to fit against); RB/WR/TE is fit against real CBS "
         "Consensus auction $ (moderate fit, r²≈0.33 — a calibrated estimate, not a verified "
         "one). Only ~90 players clear replacement level and get priced; everyone else is an "
-        "implied $1 fill. Analyst lean: Cummings/Eisenberg/Gibbs vs. the model — see "
-        "dbt/models/analytics/player_auction_prices.sql and preferred_analyst_lean.sql for "
-        "the full methodology."
+        "implied $1 fill. Mock lean/pick: QB-only, sourced from a real superflex mock draft's "
+        "pick order (revealed-preference demand), not a standard-league analyst opinion "
+        "rescaled to fit -- see dbt/models/analytics/superflex_mock_qb_lean.sql."
     )
 
 
