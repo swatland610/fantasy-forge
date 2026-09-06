@@ -28,15 +28,16 @@ models:
           - accepted_values:
               values: ['QB', 'RB', 'WR', 'TE']
 
-  - name: superflex_mock_qb_lean
+  - name: superflex_mock_lean
     description: >
-      QB-only, live-season analog of preferred_analyst_lean, sourced from
-      stg_superflex_mock__qb_capital (a real 12-team superflex mock draft's QB pick order)
-      instead of Cummings/Eisenberg/Gibbs -- their standard-league rankings can't be
-      rescaled into a superflex-specific order (an ordinal ranking isn't a proportion the
-      way a dollar share is; see player_auction_prices.sql). This treats the mock's real
-      revealed-preference pick order as its own independent "superflex ECR." n=1 mock, not
-      a market consensus -- see the model header and mock_extraction_flagged.
+      All-position (QB/RB/WR/TE), live-season analog of preferred_analyst_lean, sourced from
+      stg_superflex_mock__draft_capital (a real 12-team superflex mock draft's full pick
+      order) instead of Cummings/Eisenberg/Gibbs. Originally QB-only (their standard-league
+      rankings can't be rescaled into a superflex-specific order -- see
+      player_auction_prices.sql); generalized to all positions 2026-09-06 once the mock was
+      re-transcribed in full. Treats the mock's real revealed-preference pick order as its
+      own independent rank source. n=1 mock, not a market consensus -- see the model header
+      and mock_extraction_flagged.
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
@@ -50,7 +51,7 @@ models:
         tests:
           - not_null
       - name: mock_position_rank
-        description: QBs ranked by the mock's pick_no ascending (pick 1 = QB1)
+        description: Players ranked by the mock's pick_no ascending WITHIN position (pick order restarts at 1 per position)
         tests:
           - not_null
 
