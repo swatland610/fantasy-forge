@@ -156,7 +156,10 @@ models:
         tests:
           - not_null
       - name: projected_games
-        description: Recency-weighted projected games, regressed toward the position durability anchor (capped 17)
+        description: >
+          Recency-weighted projected games, reliability-shrunk toward the position durability
+          anchor with a fitted per-position k (capped 17). See the model's column comment and
+          scripts/fit_durability_shrinkage.py.
         tests:
           - not_null
 
