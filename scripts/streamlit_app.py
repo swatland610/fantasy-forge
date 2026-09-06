@@ -95,11 +95,21 @@ rookies as (
         select 1 from main.drafted_picks d
         where try_cast(d.sleeper_player_id as bigint) = dp.sleeper_id
     )
+),
+
+board_rows as (
+    select * from veterans
+    union all
+    select * from rookies
 )
 
-select * from veterans
-union all
-select * from rookies
+select
+    *,
+    case
+        when price + coalesce(mock_lean, 0) > 0 then price + coalesce(mock_lean, 0)
+        else 1
+    end as price_adjusted
+from board_rows
 order by price desc nulls last, vorp desc
 limit 60
 """
@@ -350,17 +360,27 @@ def live_board():
         height=650,
         column_config={
             "price": st.column_config.NumberColumn("price ceiling", format="$%d"),
+            "vorp": st.column_config.NumberColumn("vorp", format="%.1f"),
             "mock_pick_no": st.column_config.NumberColumn(
                 "mock pick",
-                help="QB only: this player's pick number in a real 12-team superflex mock "
-                "draft (12 different drafters) -- blank for RB/WR/TE, which the mock doesn't "
-                "cover.",
+                help="This player's pick number in a real 12-team superflex mock draft (12 "
+                "different drafters) -- blank if this mock didn't draft them (or, for "
+                "rookies, isn't covered at all).",
             ),
             "mock_lean": st.column_config.NumberColumn(
                 "mock lean",
-                help="QB only: our VORP-based position rank minus the mock's pick-order "
-                "position rank. Positive = the mock's drafters valued this QB higher than "
-                "our model does.",
+                help="Our VORP-based position rank minus the mock's pick-order position "
+                "rank. Positive = the mock's drafters valued this player higher than our "
+                "model does.",
+            ),
+            "price_adjusted": st.column_config.NumberColumn(
+                "price adjustment",
+                format="$%d",
+                help="price ceiling + mock lean, floored at $1. A rough, mechanical nudge "
+                "toward what the mock's room actually paid attention to -- not a re-fit "
+                "price, just the ceiling shifted by the lean points. Blank mock lean is "
+                "treated as 0 (no adjustment), including for all rookies (no mock lean at "
+                "all in that union).",
             ),
         },
     )
