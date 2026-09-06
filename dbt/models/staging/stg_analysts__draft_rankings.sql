@@ -48,13 +48,21 @@
 --   * position_rank, where the source gives one directly (Eisenberg's per-position tier pages)
 --   * else derived from overall_rank (Gibbs' single 1-175 board) via row_number within position
 --   * else derived from tier alone (Cummings' QB/RB/TE tiers have no numeric rank) via
---     row_number(order by tier) -- this only orders TIERS correctly, not players within a
---     tier; that's the real granularity of a tier-based source and shouldn't be oversold as
---     more precise than it is.
+--     row_number(order by tier, source_row_order) -- this only orders TIERS correctly, not
+--     players within a tier from any real signal; that's the real granularity of a
+--     tier-based source and shouldn't be oversold as more precise than it is.
+--     source_row_order (the seed's rowid, i.e. CSV row order) is used as the within-tier
+--     tiebreak, NOT player_id -- verified against Cummings' own RB tiers article, which
+--     lists players within a tier in a real order ("Gibbs and Robinson are the only backs
+--     I have projected for more than 20.5 PPR points/game", Gibbs listed first): the CSV
+--     preserves that article order, so tiebreaking on source_row_order recovers it, while
+--     player_id (the original tiebreak) scrambled it arbitrarily. Still not claiming this
+--     is precise for sources where the tier listing itself isn't meaningfully ordered --
+--     only that it's strictly better than an arbitrary id.
 
 with source as (
 
-    select *
+    select *, rowid as source_row_order
     from {{ ref('analyst_draft_rankings_2026') }}
 
 ),
@@ -70,6 +78,7 @@ aliased as (
         s.overall_rank,
         s.position_rank,
         s.tier,
+        s.source_row_order,
         s.source_url,
         s.pulled_date
     from source as s
@@ -134,7 +143,7 @@ select
         when position_rank is not null then position_rank
         when overall_rank is not null
             then row_number() over (partition by analyst, position order by overall_rank)
-        else row_number() over (partition by analyst, position order by tier, player_id)
+        else row_number() over (partition by analyst, position order by tier, source_row_order)
     end as normalized_position_rank,
     source_url,
     pulled_date

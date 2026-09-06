@@ -1,6 +1,8 @@
 """Live Cool Place draft board.
 
-Reads data/ff_platform.duckdb read-only and auto-refreshes. Run alongside
+Reads data/ff_platform.duckdb read-only. The board/budget/recent-picks section
+auto-refreshes on its own (st.fragment); the player lookup below it is a plain
+interactive section that doesn't get reset by that refresh. Run alongside
 draft_poller.py, which keeps main.drafted_picks current from Sleeper.
 
 Usage (from the main checkout):
@@ -17,7 +19,18 @@ import streamlit as st
 
 DEFAULT_LEAGUE_ID = "coolplace"
 DEFAULT_BUDGET = 250
+DEFAULT_SEASON = 2026
 REFRESH_SECONDS = 5
+
+# CBS doesn't document what budget their "Auction Value" column assumes (checked both
+# the rankings page and their auction-values page directly -- neither states it). Inferred
+# from the numbers instead: max value is $35 (top overall), and a true #1 overall typically
+# sells for 25-35% of budget in real drafts. $35 as 17.5% of a $200 budget would be unusually
+# cheap; $35 as 35% of a $100 budget matches typical real-draft behavior much better. Treat
+# this as an inference, not a confirmed fact -- adjust if it looks wrong once real bids come
+# in. This also only corrects for budget size, not format: CBS's sheet is a standard 1-QB
+# league with no superflex signal, so scaled QB prices still understate real superflex demand.
+CBS_BUDGET_SCALE = DEFAULT_BUDGET / 100
 
 BOARD_SQL = """
 select
@@ -36,7 +49,7 @@ left join analytics.player_auction_prices ap on ap.player_id = pv.player_id
 left join analytics.preferred_analyst_lean lean
     on lean.player_id = pv.player_id and lean.league_id = pv.league_id
 where pv.league_id = ?
-  and pv.projection_season = 2026
+  and pv.projection_season = ?
   and pv.player_status = 'ACT'
   and not exists (
     select 1 from main.drafted_picks d
@@ -65,12 +78,102 @@ order by pick_no desc
 limit 15
 """
 
+PLAYER_LIST_SQL = """
+select dp.player_id, dp.display_name, dp.team, pv.position
+from analytics.player_values pv
+join core.dim_players dp on dp.player_id = pv.player_id
+where pv.league_id = ?
+  and pv.projection_season = ?
+  and pv.player_status = 'ACT'
+order by pv.vorp desc
+"""
+
+PLAYER_DETAIL_SQL = """
+select
+    dp.display_name,
+    dp.team,
+    dp.college_name,
+    dp.years_of_experience,
+    pv.position,
+    pv.vorp,
+    pv.overall_rank,
+    pv.position_rank,
+    ap.auction_price,
+    cbs.auction_value_dollar as cbs_price,
+    fp.fantasy_points as proj_fantasy_points,
+    pc.projected_games,
+    pc.proj_carries,
+    pc.rushing_yards,
+    pc.rushing_tds,
+    pc.proj_targets,
+    pc.receptions,
+    pc.receiving_yards,
+    pc.receiving_tds,
+    pc.proj_pass_attempts,
+    pc.passing_completions,
+    pc.passing_yards,
+    pc.passing_tds,
+    pc.passing_interceptions
+from core.dim_players dp
+join analytics.player_values pv
+    on pv.player_id = dp.player_id and pv.league_id = ? and pv.projection_season = ?
+left join analytics.player_auction_prices ap on ap.player_id = dp.player_id
+left join staging.stg_analysts__auction_values cbs on cbs.player_id = dp.player_id
+left join analytics.proj_player_fantasy_points fp
+    on fp.player_id = dp.player_id and fp.projection_season = ? and fp.format_name = 'half_ppr'
+left join analytics.proj_player_season_components pc
+    on pc.player_id = dp.player_id and pc.projection_season = ?
+where dp.player_id = ?
+"""
+
+ANALYST_RANKS_SQL = """
+select analyst, normalized_position_rank as position_rank, tier, overall_rank
+from staging.stg_analysts__draft_rankings
+where player_id = ? and has_gsis_match
+order by analyst
+"""
+
+# Position-appropriate projected-stat columns, in display order.
+POSITION_STAT_COLUMNS = {
+    "QB": [
+        ("proj_pass_attempts", "pass att"),
+        ("passing_completions", "completions"),
+        ("passing_yards", "pass yds"),
+        ("passing_tds", "pass td"),
+        ("passing_interceptions", "int"),
+        ("rushing_yards", "rush yds"),
+        ("rushing_tds", "rush td"),
+    ],
+    "RB": [
+        ("proj_carries", "carries"),
+        ("rushing_yards", "rush yds"),
+        ("rushing_tds", "rush td"),
+        ("proj_targets", "targets"),
+        ("receptions", "rec"),
+        ("receiving_yards", "rec yds"),
+        ("receiving_tds", "rec td"),
+    ],
+    "WR": [
+        ("proj_targets", "targets"),
+        ("receptions", "rec"),
+        ("receiving_yards", "rec yds"),
+        ("receiving_tds", "rec td"),
+    ],
+    "TE": [
+        ("proj_targets", "targets"),
+        ("receptions", "rec"),
+        ("receiving_yards", "rec yds"),
+        ("receiving_tds", "rec td"),
+    ],
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db-path", default="data/ff_platform.duckdb")
     parser.add_argument("--league-id", default=DEFAULT_LEAGUE_ID)
     parser.add_argument("--budget", type=int, default=DEFAULT_BUDGET)
+    parser.add_argument("--season", type=int, default=DEFAULT_SEASON)
     # Streamlit passes its own args through; only parse ours, ignore the rest.
     args, _ = parser.parse_known_args(sys.argv[1:])
     return args
@@ -110,62 +213,170 @@ args = parse_args()
 st.set_page_config(page_title="Cool Place — Live Draft", layout="wide")
 st.title("Cool Place — Live Draft Board")
 
-con = connect_readonly(args.db_path)
-try:
-    budget_df = con.execute(BUDGET_SQL, [args.budget]).fetch_df()
-    recent_df = con.execute(RECENT_PICKS_SQL).fetch_df()
-    board_df = con.execute(BOARD_SQL, [args.league_id]).fetch_df()
-finally:
-    con.close()
 
-st.caption(f"Auto-refreshing every {REFRESH_SECONDS}s · budget/team ${args.budget}")
+@st.cache_data(ttl=300)
+def load_player_list(db_path: str, league_id: str, season: int) -> pd.DataFrame:
+    con = connect_readonly(db_path)
+    try:
+        return con.execute(PLAYER_LIST_SQL, [league_id, season]).fetch_df()
+    finally:
+        con.close()
 
-col1, col2 = st.columns([1, 1])
 
-with col1:
-    st.subheader("Budget remaining by roster")
-    if budget_df.empty:
-        st.info("No picks yet.")
+@st.fragment(run_every=REFRESH_SECONDS)
+def live_board():
+    con = connect_readonly(args.db_path)
+    try:
+        budget_df = con.execute(BUDGET_SQL, [args.budget]).fetch_df()
+        recent_df = con.execute(RECENT_PICKS_SQL).fetch_df()
+        board_df = con.execute(BOARD_SQL, [args.league_id, args.season]).fetch_df()
+    finally:
+        con.close()
+
+    st.caption(f"Auto-refreshing every {REFRESH_SECONDS}s · budget/team ${args.budget}")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.subheader("Budget remaining by roster")
+        if budget_df.empty:
+            st.info("No picks yet.")
+        else:
+            st.dataframe(
+                budget_df.style.map(style_remaining, subset=["remaining"]),
+                width="stretch",
+                hide_index=True,
+            )
+
+    with col2:
+        st.subheader("Recently drafted")
+        if recent_df.empty:
+            st.info("No picks yet.")
+        else:
+            st.dataframe(recent_df, width="stretch", hide_index=True)
+
+    st.subheader("Best remaining players (undrafted)")
+    st.dataframe(
+        board_df.style.map(style_lean, subset=["analyst_lean"]),
+        width="stretch",
+        hide_index=True,
+        height=650,
+        column_config={
+            "price": st.column_config.NumberColumn("price ceiling", format="$%d"),
+            "analyst_lean": st.column_config.NumberColumn(
+                "analyst lean",
+                help="Your preferred analysts' avg position rank minus the model's. "
+                "Positive = they like this player more than VORP does.",
+            ),
+            "n_analysts": st.column_config.NumberColumn(
+                "# analysts", help="How many of your analysts ranked this player"
+            ),
+        },
+    )
+
+    st.caption(
+        "Price ceiling: $250-budget auction model — QB keeps the original hand-anchored "
+        "gamma (no superflex market data to fit against); RB/WR/TE is fit against real CBS "
+        "Consensus auction $ (moderate fit, r²≈0.33 — a calibrated estimate, not a verified "
+        "one). Only ~90 players clear replacement level and get priced; everyone else is an "
+        "implied $1 fill. Analyst lean: Cummings/Eisenberg/Gibbs vs. the model — see "
+        "dbt/models/analytics/player_auction_prices.sql and preferred_analyst_lean.sql for "
+        "the full methodology."
+    )
+
+
+live_board()
+
+st.divider()
+st.subheader("Player lookup")
+
+player_list_df = load_player_list(args.db_path, args.league_id, args.season)
+player_options = {
+    f"{row.display_name} ({row.position}, {row.team})": row.player_id
+    for row in player_list_df.itertuples()
+}
+selected_label = st.selectbox(
+    "Search a player",
+    options=list(player_options.keys()),
+    index=None,
+    placeholder="Type a name…",
+    label_visibility="collapsed",
+)
+
+if selected_label:
+    player_id = player_options[selected_label]
+    con = connect_readonly(args.db_path)
+    try:
+        detail = con.execute(
+            PLAYER_DETAIL_SQL,
+            [args.league_id, args.season, args.season, args.season, player_id],
+        ).fetch_df()
+        analyst_ranks = con.execute(ANALYST_RANKS_SQL, [player_id]).fetch_df()
+    finally:
+        con.close()
+
+    if detail.empty:
+        st.warning("No data for this player.")
     else:
-        st.dataframe(
-            budget_df.style.map(style_remaining, subset=["remaining"]),
-            width="stretch",
-            hide_index=True,
+        row = detail.iloc[0]
+
+        st.markdown(f"### {row.display_name} · {row.position} · {row.team}")
+        bio_bits = []
+        if pd.notna(row.college_name):
+            bio_bits.append(row.college_name)
+        if pd.notna(row.years_of_experience):
+            bio_bits.append(f"{int(row.years_of_experience)} yrs exp")
+        if bio_bits:
+            st.caption(" · ".join(bio_bits))
+
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("VORP", f"{row.vorp:.1f}" if pd.notna(row.vorp) else "—")
+        m2.metric("Overall rank", int(row.overall_rank) if pd.notna(row.overall_rank) else "—")
+        m3.metric("Position rank", int(row.position_rank) if pd.notna(row.position_rank) else "—")
+        m4.metric("Price ceiling", f"${int(row.auction_price)}" if pd.notna(row.auction_price) else "—")
+        cbs_scaled = row.cbs_price * CBS_BUDGET_SCALE if pd.notna(row.cbs_price) else None
+        m5.metric(
+            "CBS $ (scaled to $250)",
+            f"${cbs_scaled:.0f}" if cbs_scaled is not None else "—",
+            help=f"Raw CBS value ${row.cbs_price:.0f} scaled {CBS_BUDGET_SCALE:.2f}x, "
+            "inferred (not confirmed) to assume a $100 budget from top-pick pricing "
+            "patterns. Still a standard 1-QB comp — no superflex signal, so scaled "
+            "QB prices understate "
+            "real demand." if pd.notna(row.cbs_price) else "No CBS Consensus value for this player.",
         )
 
-with col2:
-    st.subheader("Recently drafted")
-    if recent_df.empty:
-        st.info("No picks yet.")
-    else:
-        st.dataframe(recent_df, width="stretch", hide_index=True)
+        proj_points = f"{row.proj_fantasy_points:.1f}" if pd.notna(row.proj_fantasy_points) else "—"
+        st.markdown(f"**Projected 2026 fantasy points (half-PPR):** {proj_points}")
+        if pd.notna(row.projected_games):
+            st.caption(f"Projected games: {row.projected_games:.1f}")
 
-st.subheader("Best remaining players (undrafted)")
-st.dataframe(
-    board_df.style.map(style_lean, subset=["analyst_lean"]),
-    width="stretch",
-    hide_index=True,
-    height=650,
-    column_config={
-        "price": st.column_config.NumberColumn("price ceiling", format="$%d"),
-        "analyst_lean": st.column_config.NumberColumn(
-            "analyst lean",
-            help="Your preferred analysts' avg position rank minus the model's. "
-            "Positive = they like this player more than VORP does.",
-        ),
-        "n_analysts": st.column_config.NumberColumn("# analysts", help="How many of your analysts ranked this player"),
-    },
-)
+        stat_cols = POSITION_STAT_COLUMNS.get(row.position, [])
+        stat_data = {
+            label: [row[col]]
+            for col, label in stat_cols
+            if col in row.index and pd.notna(row[col])
+        }
+        if stat_data:
+            st.dataframe(pd.DataFrame(stat_data).round(1), width="stretch", hide_index=True)
 
-st.caption(
-    "Price ceiling: $250-budget auction model — QB keeps the original hand-anchored "
-    "gamma (no superflex market data to fit against); RB/WR/TE is fit against real CBS "
-    "Consensus auction $ (moderate fit, r²≈0.33 — a calibrated estimate, not a verified "
-    "one). Only ~90 players clear replacement level and get priced; everyone else is an "
-    "implied $1 fill. Analyst lean: Cummings/Eisenberg/Gibbs vs. the model — see "
-    "dbt/models/analytics/player_auction_prices.sql and preferred_analyst_lean.sql for "
-    "the full methodology."
-)
-
-time.sleep(REFRESH_SECONDS)
-st.rerun()
+        if not analyst_ranks.empty:
+            st.markdown("**Your analysts' individual rankings**")
+            st.dataframe(
+                analyst_ranks,
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "position_rank": st.column_config.NumberColumn(
+                        "position rank",
+                        help="Normalized to position rank so all three analysts are "
+                        "comparable — some sources only publish overall rank or a tier, "
+                        "not a raw position rank.",
+                    ),
+                    "overall_rank": st.column_config.NumberColumn(
+                        "overall rank (raw)",
+                        help="Null when that analyst's source doesn't publish an overall rank.",
+                    ),
+                },
+            )
+        else:
+            st.caption("None of your preferred analysts ranked this player.")
