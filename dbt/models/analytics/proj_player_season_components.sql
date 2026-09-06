@@ -183,14 +183,26 @@ derived as (
         -- shrinkage bug. E.g. an 8-game season two years running still projects below-average
         -- games; this fix corrects HOW MUCH we trust a player's own record given their amount
         -- of history, not what that record itself says happened.
+        --
+        -- MANUAL OVERRIDE (durability_overrides_2026 seed, stg_durability_overrides): games_played
+        -- alone can't distinguish "two unrelated freak injuries" from "chronically fragile" --
+        -- both look identical to this model. Building a real injury-chronicity classifier is out
+        -- of scope (same category as the documented "no aging curve" cut, and
+        -- stg_nflverse__injuries doesn't cover the current season yet). Where a human has
+        -- confirmed the distinction for a specific player (with a written reason in the seed),
+        -- override_games replaces the fitted estimate outright -- a deliberate, auditable
+        -- judgment call, not a silent pipeline hack. Empty for every player by default.
         least(
             17.0,
-            {{ reliability_shrink(
-                'agg.d_games / nullif(agg.w_total, 0)',
-                'b.baseline_games',
-                'agg.w_total',
-                'k.k_durability'
-            ) }}
+            coalesce(
+                ov.override_games,
+                {{ reliability_shrink(
+                    'agg.d_games / nullif(agg.w_total, 0)',
+                    'b.baseline_games',
+                    'agg.w_total',
+                    'k.k_durability'
+                ) }}
+            )
         ) as projected_games,
 
         -- projected per-game opportunity (games-weighted; sticky -> used directly, not shrunk)
@@ -233,6 +245,8 @@ derived as (
     join {{ ref('int_projection__position_baselines') }} as b
         using (projection_season, position)
     left join k_wide as k using (position)
+    left join {{ ref('stg_durability_overrides') }} as ov
+        on ov.player_id = agg.player_id and ov.has_gsis_match
 
 ),
 

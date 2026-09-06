@@ -1,6 +1,26 @@
 version: 2
 
 models:
+  - name: stg_durability_overrides
+    description: >
+      Manual, human-curated projected_games overrides (durability_overrides_2026 seed),
+      crosswalked to dim_players via normalized name + position. Every row carries a written
+      reason -- consumed by proj_player_season_components to replace the fitted
+      reliability-shrunk games estimate outright for specific flagged players (e.g. one-off
+      unrelated injuries a games_played-only model can't distinguish from chronic fragility).
+      Empty for every player by default; see the model's header for why this exists instead
+      of an automated fix.
+    columns:
+      - name: player_name
+        tests:
+          - not_null
+      - name: has_gsis_match
+        tests:
+          - not_null
+      - name: override_games
+        tests:
+          - not_null
+
   - name: stg_analysts__draft_rankings
     description: >
       Analyst snake-draft rankings (analyst_draft_rankings_2026 seed) crosswalked to

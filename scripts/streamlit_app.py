@@ -133,7 +133,9 @@ select
     pc.passing_tds,
     pc.passing_interceptions,
     mock.pick_no as superflex_mock_pick,
-    mock.extraction_flagged as superflex_mock_flagged
+    mock.extraction_flagged as superflex_mock_flagged,
+    ov.override_games as durability_override_games,
+    ov.reason as durability_override_reason
 from core.dim_players dp
 join analytics.player_values pv
     on pv.player_id = dp.player_id and pv.league_id = ? and pv.projection_season = ?
@@ -145,6 +147,8 @@ left join analytics.proj_player_season_components pc
     on pc.player_id = dp.player_id and pc.projection_season = ?
 left join staging.stg_superflex_mock__qb_capital mock
     on mock.player_id = dp.player_id and mock.has_gsis_match
+left join staging.stg_durability_overrides ov
+    on ov.player_id = dp.player_id and ov.has_gsis_match
 where dp.player_id = ?
 """
 
@@ -410,7 +414,13 @@ if selected_label:
         proj_points = f"{row.proj_fantasy_points:.1f}" if pd.notna(row.proj_fantasy_points) else "—"
         st.markdown(f"**Projected 2026 fantasy points (half-PPR):** {proj_points}")
         if pd.notna(row.projected_games):
-            st.caption(f"Projected games: {row.projected_games:.1f}")
+            if pd.notna(row.durability_override_games):
+                st.caption(
+                    f"Projected games: {row.projected_games:.1f} — ⚠️ manually overridden "
+                    f"(model's fitted estimate replaced by human judgment). {row.durability_override_reason}"
+                )
+            else:
+                st.caption(f"Projected games: {row.projected_games:.1f}")
 
         stat_cols = POSITION_STAT_COLUMNS.get(row.position, [])
         stat_data = {
