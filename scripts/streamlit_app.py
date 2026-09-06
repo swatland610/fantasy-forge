@@ -132,8 +132,10 @@ select
     pc.passing_yards,
     pc.passing_tds,
     pc.passing_interceptions,
-    mock.pick_no as superflex_mock_pick,
-    mock.extraction_flagged as superflex_mock_flagged,
+    sml.mock_pick_no as superflex_mock_pick,
+    sml.mock_position_rank as superflex_mock_position_rank,
+    sml.lean as superflex_mock_lean,
+    sml.mock_extraction_flagged as superflex_mock_flagged,
     ov.override_games as durability_override_games,
     ov.reason as durability_override_reason
 from core.dim_players dp
@@ -145,8 +147,8 @@ left join analytics.proj_player_fantasy_points fp
     on fp.player_id = dp.player_id and fp.projection_season = ? and fp.format_name = 'half_ppr'
 left join analytics.proj_player_season_components pc
     on pc.player_id = dp.player_id and pc.projection_season = ?
-left join staging.stg_superflex_mock__qb_capital mock
-    on mock.player_id = dp.player_id and mock.has_gsis_match
+left join analytics.superflex_mock_qb_lean sml
+    on sml.player_id = dp.player_id and sml.league_id = ?
 left join staging.stg_durability_overrides ov
     on ov.player_id = dp.player_id and ov.has_gsis_match
 where dp.player_id = ?
@@ -162,18 +164,18 @@ order by analyst
 QB_SUPERFLEX_MOCK_SQL = """
 select
     dp.display_name as player,
-    mock.pick_no,
-    pv.overall_rank as our_overall_rank,
-    pv.vorp,
+    sml.mock_pick_no as pick_no,
+    sml.model_position_rank as our_position_rank,
+    sml.mock_position_rank,
+    sml.lean,
+    sml.vorp,
     ap.auction_price as price,
-    mock.extraction_flagged
-from staging.stg_superflex_mock__qb_capital mock
-join core.dim_players dp on dp.player_id = mock.player_id
-left join analytics.player_values pv
-    on pv.player_id = mock.player_id and pv.league_id = ? and pv.projection_season = ?
-left join analytics.player_auction_prices ap on ap.player_id = mock.player_id
-where mock.has_gsis_match
-order by mock.pick_no
+    sml.mock_extraction_flagged as extraction_flagged
+from analytics.superflex_mock_qb_lean sml
+join core.dim_players dp on dp.player_id = sml.player_id
+left join analytics.player_auction_prices ap on ap.player_id = sml.player_id
+where sml.league_id = ?
+order by sml.mock_pick_no
 """
 
 # Position-appropriate projected-stat columns, in display order.
@@ -352,7 +354,7 @@ if selected_label:
     try:
         detail = con.execute(
             PLAYER_DETAIL_SQL,
-            [args.league_id, args.season, args.season, args.season, player_id],
+            [args.league_id, args.season, args.season, args.season, args.league_id, player_id],
         ).fetch_df()
         analyst_ranks = con.execute(ANALYST_RANKS_SQL, [player_id]).fetch_df()
     finally:
@@ -403,11 +405,16 @@ if selected_label:
 
         if is_qb and pd.notna(row.superflex_mock_pick):
             flagged = " ⚠️" if row.superflex_mock_flagged else ""
+            lean_note = (
+                f"lean {row.superflex_mock_lean:+.0f} (our position rank {int(row.position_rank)} "
+                f"vs. mock position rank {int(row.superflex_mock_position_rank)}; positive = the "
+                "mock's drafters valued this QB higher than our model does)"
+            )
             st.caption(
-                f"Superflex mock draft capital: pick {int(row.superflex_mock_pick)}{flagged} "
-                "— from a single real 12-team superflex mock (12 different drafters), not a "
-                "stated ranking. Real revealed-preference superflex QB demand, since CBS's own "
-                "$ sheet has none."
+                f"Superflex mock draft capital: pick {int(row.superflex_mock_pick)}{flagged} — "
+                f"{lean_note}. From a single real 12-team superflex mock (12 different "
+                "drafters), treated as its own 'superflex ECR' — not a stated ranking from your "
+                "preferred analysts, who only publish standard-league QB orders."
                 + (" This pick has flagged extraction uncertainty — see the seed's notes." if row.superflex_mock_flagged else "")
             )
 
@@ -457,25 +464,33 @@ st.divider()
 st.subheader("QB: our model vs. real superflex mock draft capital")
 st.caption(
     "Single 12-team superflex mock (12 different drafters, real revealed-preference "
-    "draft capital) vs. our own VORP/price. Useful for sanity-checking the model's QB "
-    "order independent of our own pipeline — e.g. this is what surfaced Bo Nix ranking "
-    "above Josh Allen in our model despite going 56 picks later here. n=1 mock, not a "
-    "market consensus — ⚠️ marks picks with flagged extraction uncertainty."
+    "draft capital) treated as its own 'superflex ECR' — a genuine substitute for a real "
+    "superflex ranking, since your preferred analysts only publish standard-league QB "
+    "orders (an ordinal ranking can't be rescaled into a different format's order the way "
+    "a dollar share can — see player_auction_prices.sql). lean = our position rank minus "
+    "the mock's; positive = the mock's room valued this QB higher than our model does. "
+    "n=1 mock, not a market consensus — ⚠️ marks picks with flagged extraction uncertainty."
 )
 qb_mock_con = connect_readonly(args.db_path)
 try:
-    qb_mock_df = qb_mock_con.execute(QB_SUPERFLEX_MOCK_SQL, [args.league_id, args.season]).fetch_df()
+    qb_mock_df = qb_mock_con.execute(QB_SUPERFLEX_MOCK_SQL, [args.league_id]).fetch_df()
 finally:
     qb_mock_con.close()
 
 qb_mock_df["flag"] = qb_mock_df["extraction_flagged"].map(lambda x: "⚠️" if x else "")
 st.dataframe(
-    qb_mock_df.drop(columns=["extraction_flagged"]),
+    qb_mock_df.drop(columns=["extraction_flagged"]).style.map(style_lean, subset=["lean"]),
     width="stretch",
     hide_index=True,
     column_config={
         "pick_no": st.column_config.NumberColumn("mock pick"),
-        "our_overall_rank": st.column_config.NumberColumn("our overall rank"),
+        "our_position_rank": st.column_config.NumberColumn("our position rank"),
+        "mock_position_rank": st.column_config.NumberColumn("mock position rank"),
+        "lean": st.column_config.NumberColumn(
+            "lean",
+            help="Our position rank minus the mock's. Positive = the mock's drafters valued "
+            "this QB higher than our model does.",
+        ),
         "price": st.column_config.NumberColumn("our price", format="$%d"),
         "flag": st.column_config.TextColumn(" ", help="Flagged extraction uncertainty — see the seed's notes"),
     },

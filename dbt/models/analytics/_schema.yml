@@ -1,6 +1,32 @@
 version: 2
 
 models:
+  - name: superflex_mock_qb_lean
+    description: >
+      QB-only, live-season analog of preferred_analyst_lean, sourced from
+      stg_superflex_mock__qb_capital (a real 12-team superflex mock draft's QB pick order)
+      instead of Cummings/Eisenberg/Gibbs -- their standard-league rankings can't be
+      rescaled into a superflex-specific order (an ordinal ranking isn't a proportion the
+      way a dollar share is; see player_auction_prices.sql). This treats the mock's real
+      revealed-preference pick order as its own independent "superflex ECR." n=1 mock, not
+      a market consensus -- see the model header and mock_extraction_flagged.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - league_id
+            - player_id
+    columns:
+      - name: league_id
+        tests:
+          - not_null
+      - name: player_id
+        tests:
+          - not_null
+      - name: mock_position_rank
+        description: QBs ranked by the mock's pick_no ascending (pick 1 = QB1)
+        tests:
+          - not_null
+
   - name: player_auction_prices
     description: >
       Cool Place-specific $250/team (x12 = $3,000) auction price ceiling. Two-part
