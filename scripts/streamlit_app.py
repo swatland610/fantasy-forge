@@ -28,9 +28,27 @@ REFRESH_SECONDS = 5
 # sells for 25-35% of budget in real drafts. $35 as 17.5% of a $200 budget would be unusually
 # cheap; $35 as 35% of a $100 budget matches typical real-draft behavior much better. Treat
 # this as an inference, not a confirmed fact -- adjust if it looks wrong once real bids come
-# in. This also only corrects for budget size, not format: CBS's sheet is a standard 1-QB
-# league with no superflex signal, so scaled QB prices still understate real superflex demand.
+# in.
 CBS_BUDGET_SCALE = DEFAULT_BUDGET / 100
+
+# CBS's sheet is a standard 1-QB league, so QB $ there reflects standard demand (~12
+# startable QBs), not our superflex demand (~22 startable, 24 rostered). Budget-size
+# scaling alone doesn't fix that -- it's a demand-curve mismatch, not just a dollar-scale
+# one. Proxy: rescale CBS's *aggregate* QB budget share to match our real superflex QB
+# share (23.4%, the same demand-derived number player_auction_prices.sql uses), without
+# touching their player-to-player order. CBS's own QB share, computed from their sheet:
+# sum(QB $) / sum(all $) = 78/1194 = 6.53%. Ratio = 0.234 / 0.0653 = 3.58x, on top of the
+# $100->$250 budget-size scale above.
+#
+# Caveat: this only corrects the aggregate level, not the curve SHAPE -- CBS's QB spread
+# is much flatter (top value $35, near-replacement ~$0) than our own gamma-concentrated
+# superflex curve, since standard leagues don't bother differentiating deep QBs. Sanity
+# check: this proxy puts Josh Allen at ~$116, above our own model's $74 ceiling for him.
+# Read it as a rough magnitude check on aggregate QB spend, not a literal per-player bid
+# target -- our own player_auction_prices.auction_price is still the number to draft from.
+CBS_QB_SHARE = 78 / 1194
+QB_SUPERFLEX_SHARE = 0.234  # same constant as player_auction_prices.sql
+QB_SCARCITY_RATIO = QB_SUPERFLEX_SHARE / CBS_QB_SHARE
 
 BOARD_SQL = """
 select
@@ -334,15 +352,28 @@ if selected_label:
         m2.metric("Overall rank", int(row.overall_rank) if pd.notna(row.overall_rank) else "—")
         m3.metric("Position rank", int(row.position_rank) if pd.notna(row.position_rank) else "—")
         m4.metric("Price ceiling", f"${int(row.auction_price)}" if pd.notna(row.auction_price) else "—")
-        cbs_scaled = row.cbs_price * CBS_BUDGET_SCALE if pd.notna(row.cbs_price) else None
+        is_qb = row.position == "QB"
+        total_scale = CBS_BUDGET_SCALE * QB_SCARCITY_RATIO if is_qb else CBS_BUDGET_SCALE
+        cbs_scaled = row.cbs_price * total_scale if pd.notna(row.cbs_price) else None
+        if is_qb:
+            cbs_help = (
+                f"Raw CBS value ${row.cbs_price:.0f}, scaled {CBS_BUDGET_SCALE:.2f}x for "
+                f"budget size and {QB_SCARCITY_RATIO:.2f}x for superflex QB scarcity "
+                "(CBS's own QB budget share, 6.5%, rescaled to our real superflex share, "
+                "23.4%). Corrects the aggregate level only, not CBS's flatter curve shape — "
+                "treat as a rough magnitude check, not a bid target. Use the price ceiling "
+                "for actual bids."
+            )
+        else:
+            cbs_help = (
+                f"Raw CBS value ${row.cbs_price:.0f} scaled {CBS_BUDGET_SCALE:.2f}x, "
+                "inferred (not confirmed) to assume a $100 budget from top-pick pricing "
+                "patterns."
+            )
         m5.metric(
-            "CBS $ (scaled to $250)",
+            "CBS $ (scaled)",
             f"${cbs_scaled:.0f}" if cbs_scaled is not None else "—",
-            help=f"Raw CBS value ${row.cbs_price:.0f} scaled {CBS_BUDGET_SCALE:.2f}x, "
-            "inferred (not confirmed) to assume a $100 budget from top-pick pricing "
-            "patterns. Still a standard 1-QB comp — no superflex signal, so scaled "
-            "QB prices understate "
-            "real demand." if pd.notna(row.cbs_price) else "No CBS Consensus value for this player.",
+            help=cbs_help if pd.notna(row.cbs_price) else "No CBS Consensus value for this player.",
         )
 
         proj_points = f"{row.proj_fantasy_points:.1f}" if pd.notna(row.proj_fantasy_points) else "—"
