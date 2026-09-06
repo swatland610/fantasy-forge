@@ -51,29 +51,56 @@ QB_SUPERFLEX_SHARE = 0.234  # same constant as player_auction_prices.sql
 QB_SCARCITY_RATIO = QB_SUPERFLEX_SHARE / CBS_QB_SHARE
 
 BOARD_SQL = """
-select
-    dp.display_name as player,
-    dp.team,
-    pv.position,
-    ap.auction_price as price,
-    pv.vorp,
-    pv.overall_rank as rank,
-    pv.position_rank as pos_rank,
-    sml.mock_pick_no,
-    sml.lean as mock_lean
-from analytics.player_values pv
-join core.dim_players dp on dp.player_id = pv.player_id
-left join analytics.player_auction_prices ap on ap.player_id = pv.player_id
-left join analytics.superflex_mock_qb_lean sml
-    on sml.player_id = pv.player_id and sml.league_id = pv.league_id
-where pv.league_id = ?
-  and pv.projection_season = ?
-  and pv.player_status = 'ACT'
-  and not exists (
-    select 1 from main.drafted_picks d
-    where try_cast(d.sleeper_player_id as bigint) = dp.sleeper_id
-  )
-order by ap.auction_price desc nulls last, pv.vorp desc
+with veterans as (
+    select
+        dp.display_name as player,
+        dp.team,
+        pv.position,
+        ap.auction_price as price,
+        pv.vorp,
+        pv.overall_rank as rank,
+        pv.position_rank as pos_rank,
+        sml.mock_pick_no,
+        sml.lean as mock_lean,
+        false as is_rookie
+    from analytics.player_values pv
+    join core.dim_players dp on dp.player_id = pv.player_id
+    left join analytics.player_auction_prices ap on ap.player_id = pv.player_id
+    left join analytics.superflex_mock_qb_lean sml
+        on sml.player_id = pv.player_id and sml.league_id = pv.league_id
+    where pv.league_id = ?
+      and pv.projection_season = ?
+      and pv.player_status = 'ACT'
+      and not exists (
+        select 1 from main.drafted_picks d
+        where try_cast(d.sleeper_player_id as bigint) = dp.sleeper_id
+      )
+),
+
+rookies as (
+    select
+        dp.display_name as player,
+        dp.team,
+        r.position,
+        r.estimated_price as price,
+        cast(null as double) as vorp,
+        cast(null as bigint) as rank,
+        cast(null as bigint) as pos_rank,
+        cast(null as bigint) as mock_pick_no,
+        cast(null as bigint) as mock_lean,
+        true as is_rookie
+    from analytics.rookie_player_values r
+    join core.dim_players dp on dp.player_id = r.player_id
+    where not exists (
+        select 1 from main.drafted_picks d
+        where try_cast(d.sleeper_player_id as bigint) = dp.sleeper_id
+    )
+)
+
+select * from veterans
+union all
+select * from rookies
+order by price desc nulls last, vorp desc
 limit 60
 """
 
@@ -275,6 +302,9 @@ def live_board():
         budget_df = con.execute(BUDGET_SQL, [args.budget]).fetch_df()
         recent_df = con.execute(RECENT_PICKS_SQL).fetch_df()
         board_df = con.execute(BOARD_SQL, [args.league_id, args.season]).fetch_df()
+        rookie_pool_total = con.execute(
+            "select coalesce(sum(estimated_price), 0) from analytics.rookie_player_values"
+        ).fetchone()[0]
     finally:
         con.close()
 
@@ -292,6 +322,16 @@ def live_board():
                 width="stretch",
                 hide_index=True,
             )
+        st.caption(
+            f"Rookie pool value: ${rookie_pool_total} total across all priced rookies "
+            f"(🆕 on the board below) — ~${rookie_pool_total / 12:.0f}/team if spread evenly "
+            f"across 12 teams. Rookie $ are NOT part of the veteran price ceilings' $3,000 "
+            "budget-conservation total (priced independently — see "
+            "dbt/models/analytics/rookie_player_values.sql), so this money still comes out "
+            "of your real $250. Reserve accordingly before treating veteran price ceilings as "
+            "literal — more if you plan to chase rookies harder than an average team (e.g. "
+            "Jeremiyah Love alone is a third of the whole pool)."
+        )
 
     with col2:
         st.subheader("Recently drafted")
@@ -301,8 +341,9 @@ def live_board():
             st.dataframe(recent_df, width="stretch", hide_index=True)
 
     st.subheader("Best remaining players (undrafted)")
+    board_df["player"] = board_df["player"] + board_df["is_rookie"].map(lambda r: " 🆕" if r else "")
     st.dataframe(
-        board_df.style.map(style_lean, subset=["mock_lean"]),
+        board_df.drop(columns=["is_rookie"]).style.map(style_lean, subset=["mock_lean"]),
         width="stretch",
         hide_index=True,
         height=650,
@@ -330,7 +371,11 @@ def live_board():
         "one). Only ~90 players clear replacement level and get priced; everyone else is an "
         "implied $1 fill. Mock lean/pick: QB-only, sourced from a real superflex mock draft's "
         "pick order (revealed-preference demand), not a standard-league analyst opinion "
-        "rescaled to fit -- see dbt/models/analytics/superflex_mock_qb_lean.sql."
+        "rescaled to fit -- see dbt/models/analytics/superflex_mock_qb_lean.sql. "
+        "🆕 = rookie, no NFL season history for VORP to build from — priced from real CBS "
+        "rookie auction $ and/or your analysts' rank where available (not VORP), and not "
+        "part of the veteran $3,000 budget-conservation total — see "
+        "dbt/models/analytics/rookie_player_values.sql."
     )
 
 

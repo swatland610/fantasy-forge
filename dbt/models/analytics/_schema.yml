@@ -1,6 +1,33 @@
 version: 2
 
 models:
+  - name: rookie_player_values
+    description: >
+      Cool Place-specific, live-season-only price/rank estimate for players absent from
+      player_values entirely -- true rookies with no NFL season history for the VORP engine
+      to build from (a deliberate V3 scope gap, not a bug). Priced from CBS $ (scaled the
+      same way as the veteran CBS proxy in player_auction_prices.sql) where it exists;
+      avg_analyst_position_rank from your preferred analysts otherwise/additionally.
+      estimated_price is NULL, not fabricated, for a rookie with analyst coverage but no
+      CBS $ at all. NOT part of player_auction_prices' $3,000 budget-conservation invariant
+      -- priced independently, a deliberate scope choice (see model header).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - player_id
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: position
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['QB', 'RB', 'WR', 'TE']
+
   - name: superflex_mock_qb_lean
     description: >
       QB-only, live-season analog of preferred_analyst_lean, sourced from
