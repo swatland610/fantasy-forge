@@ -102,6 +102,14 @@ agg as (
         sum(decay)                as w_total,
         sum(decay * games_played) as d_games,
 
+        -- UNWEIGHTED population variance of this player's own trailing games_played --
+        -- deliberately not decay-weighted (want raw season-to-season spread, not a
+        -- recency-tilted one) and deliberately NOT restricted to games_played >= 8 the way
+        -- int_projection__position_baselines is (a durability-consistency measure needs the
+        -- short/injury seasons IN the sample -- that filter would hide the very seasons that
+        -- create variance). See the projected_games column note below for why this exists.
+        var_pop(games_played) as games_variance,
+
         -- decayed opportunity denominators (also the n_eff for each rate's shrinkage)
         sum(decay * pass_attempts) as d_attempts,
         sum(decay * carries)       as d_carries,
@@ -122,6 +130,22 @@ agg as (
         sum(decay * receiving_first_downs)   as d_rec_1d
     from window_seasons
     group by projection_season, player_id
+
+),
+
+pop_durability_variance as (
+
+    -- population-average games_variance per (projection_season, position) -- the denominator
+    -- of the consistency factor below. Averaged over players with >=2 contributing seasons
+    -- only (a single-season "variance" of 0 is not evidence of consistency, just an absent
+    -- second data point -- see the projected_games note).
+    select
+        projection_season,
+        position,
+        avg(games_variance) as pop_avg_games_variance
+    from agg
+    where seasons_of_history >= 2
+    group by projection_season, position
 
 ),
 
@@ -192,6 +216,25 @@ derived as (
         -- confirmed the distinction for a specific player (with a written reason in the seed),
         -- override_games replaces the fitted estimate outright -- a deliberate, auditable
         -- judgment call, not a silent pipeline hack. Empty for every player by default.
+        --
+        -- CONSISTENCY-ADJUSTED EVIDENCE (added 2026-09-06): k_durability was fit against
+        -- POPULATION-average reliability -- a player with an unusually clean, low-variance
+        -- record (e.g. three straight 17-game seasons) was trusted at the SAME rate as a
+        -- typical player, because the n/(n+k) formula only sees volume of evidence (agg.w_total),
+        -- never how CONSISTENT that evidence has been. Measured 2026-09-06
+        -- (scripts/fit_durability_consistency.py): splitting the historical fit sample into
+        -- low-variance vs high-variance halves shows real, meaningfully higher reliability for
+        -- consistent players at every position (e.g. RB: R=0.385 consistent vs 0.258 erratic;
+        -- QB: 0.742 vs 0.513) -- this is a real, validated signal, not a guess.
+        --
+        -- consistency_factor scales the EVIDENCE (agg.w_total), not the observed value itself:
+        -- pop_avg_games_variance / (agg.games_variance + 0.1), capped to [0.5x, 2.0x]. The 0.1
+        -- epsilon and the cap are judgment-call guardrails (undocumented in the fit script,
+        -- flagged here) -- without them a perfectly flat 2-3 season record (games_variance = 0,
+        -- e.g. Bijan Robinson's 17/17/17) would divide by zero / extrapolate to an unbounded
+        -- multiplier. Only applied with >=2 contributing seasons -- a single season has no
+        -- variance to measure, and should get NEITHER a consistency boost nor a penalty
+        -- (factor defaults to 1.0, i.e. today's already-fitted behavior, unchanged).
         least(
             17.0,
             coalesce(
@@ -199,7 +242,12 @@ derived as (
                 {{ reliability_shrink(
                     'agg.d_games / nullif(agg.w_total, 0)',
                     'b.baseline_games',
-                    'agg.w_total',
+                    '(case
+                        when agg.seasons_of_history < 2 then agg.w_total
+                        else agg.w_total * least(2.0, greatest(0.5,
+                            pdv.pop_avg_games_variance / nullif(agg.games_variance + 0.1, 0)
+                        ))
+                    end)',
                     'k.k_durability'
                 ) }}
             )
@@ -247,6 +295,8 @@ derived as (
     left join k_wide as k using (position)
     left join {{ ref('stg_durability_overrides') }} as ov
         on ov.player_id = agg.player_id and ov.has_gsis_match
+    left join pop_durability_variance as pdv
+        using (projection_season, position)
 
 ),
 

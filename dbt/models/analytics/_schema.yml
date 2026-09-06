@@ -212,8 +212,12 @@ models:
       - name: projected_games
         description: >
           Recency-weighted projected games, reliability-shrunk toward the position durability
-          anchor with a fitted per-position k (capped 17). See the model's column comment and
-          scripts/fit_durability_shrinkage.py.
+          anchor with a fitted per-position k (capped 17). Evidence (n) is scaled by a
+          consistency factor (games_variance vs. the position's population-average variance,
+          capped 0.5x-2.0x) so a player with an unusually clean, low-variance record is
+          trusted more than the population-average reliability alone would allow -- see the
+          model's column comment, scripts/fit_durability_shrinkage.py, and
+          scripts/fit_durability_consistency.py.
         tests:
           - not_null
 
