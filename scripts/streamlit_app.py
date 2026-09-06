@@ -62,7 +62,7 @@ with veterans as (
         pv.position_rank as pos_rank,
         sml.mock_pick_no,
         sml.lean as mock_lean,
-        false as is_rookie
+        cast(null as varchar) as market_priced_reason
     from analytics.player_values pv
     join core.dim_players dp on dp.player_id = pv.player_id
     left join analytics.player_auction_prices ap on ap.player_id = pv.player_id
@@ -75,9 +75,13 @@ with veterans as (
         select 1 from main.drafted_picks d
         where try_cast(d.sleeper_player_id as bigint) = dp.sleeper_id
       )
+      and not exists (
+        select 1 from analytics.market_priced_player_values mp
+        where mp.player_id = pv.player_id
+      )
 ),
 
-rookies as (
+market_priced as (
     select
         dp.display_name as player,
         dp.team,
@@ -88,8 +92,8 @@ rookies as (
         cast(null as bigint) as pos_rank,
         cast(null as bigint) as mock_pick_no,
         cast(null as bigint) as mock_lean,
-        true as is_rookie
-    from analytics.rookie_player_values r
+        r.reason as market_priced_reason
+    from analytics.market_priced_player_values r
     join core.dim_players dp on dp.player_id = r.player_id
     where not exists (
         select 1 from main.drafted_picks d
@@ -100,7 +104,7 @@ rookies as (
 board_rows as (
     select * from veterans
     union all
-    select * from rookies
+    select * from market_priced
 )
 
 select
@@ -313,9 +317,10 @@ def live_board():
         budget_df = con.execute(BUDGET_SQL, [args.budget]).fetch_df()
         recent_df = con.execute(RECENT_PICKS_SQL).fetch_df()
         board_df = con.execute(BOARD_SQL, [args.league_id, args.season]).fetch_df()
-        rookie_pool_total = con.execute(
-            "select coalesce(sum(estimated_price), 0) from analytics.rookie_player_values"
-        ).fetchone()[0]
+        market_pool_df = con.execute(
+            "select reason, coalesce(sum(estimated_price), 0) as total "
+            "from analytics.market_priced_player_values group by reason"
+        ).fetch_df()
     finally:
         con.close()
 
@@ -333,15 +338,21 @@ def live_board():
                 width="stretch",
                 hide_index=True,
             )
+        rookie_pool_total = int(
+            market_pool_df.loc[market_pool_df["reason"] == "rookie", "total"].sum()
+        )
+        situation_pool_total = int(
+            market_pool_df.loc[market_pool_df["reason"] == "situation_change", "total"].sum()
+        )
+        market_pool_total = rookie_pool_total + situation_pool_total
         st.caption(
-            f"Rookie pool value: ${rookie_pool_total} total across all priced rookies "
-            f"(🆕 on the board below) — ~${rookie_pool_total / 12:.0f}/team if spread evenly "
-            f"across 12 teams. Rookie $ are NOT part of the veteran price ceilings' $3,000 "
-            "budget-conservation total (priced independently — see "
-            "dbt/models/analytics/rookie_player_values.sql), so this money still comes out "
-            "of your real $250. Reserve accordingly before treating veteran price ceilings as "
-            "literal — more if you plan to chase rookies harder than an average team (e.g. "
-            "Jeremiyah Love alone is a third of the whole pool)."
+            f"Market-priced pool: ${market_pool_total} total (🆕 rookies ${rookie_pool_total} + "
+            f"🔄 situation changes ${situation_pool_total}) — ~${market_pool_total / 12:.0f}/team "
+            "if spread evenly across 12 teams. These prices are NOT part of the veteran price "
+            "ceilings' $3,000 budget-conservation total (priced independently — see "
+            "dbt/models/analytics/market_priced_player_values.sql), so this money still comes "
+            "out of your real $250. Reserve accordingly before treating veteran price ceilings "
+            "as literal."
         )
 
     with col2:
@@ -352,9 +363,12 @@ def live_board():
             st.dataframe(recent_df, width="stretch", hide_index=True)
 
     st.subheader("Best remaining players (undrafted)")
-    board_df["player"] = board_df["player"] + board_df["is_rookie"].map(lambda r: " 🆕" if r else "")
+    market_priced_emoji = {"rookie": " 🆕", "situation_change": " 🔄"}
+    board_df["player"] = board_df["player"] + board_df["market_priced_reason"].map(
+        lambda r: market_priced_emoji.get(r, "")
+    )
     st.dataframe(
-        board_df.drop(columns=["is_rookie"]).style.map(style_lean, subset=["mock_lean"]),
+        board_df.drop(columns=["market_priced_reason"]).style.map(style_lean, subset=["mock_lean"]),
         width="stretch",
         hide_index=True,
         height=650,
@@ -393,10 +407,13 @@ def live_board():
         "implied $1 fill. Mock lean/pick: all positions, sourced from a real 12-team "
         "superflex mock draft's full pick order (revealed-preference demand) -- see "
         "dbt/models/analytics/superflex_mock_lean.sql. "
-        "🆕 = rookie, no NFL season history for VORP to build from — priced from real CBS "
-        "rookie auction $ and/or your analysts' rank where available (not VORP), and not "
-        "part of the veteran $3,000 budget-conservation total — see "
-        "dbt/models/analytics/rookie_player_values.sql."
+        "🆕 = rookie, no NFL season history for VORP to build from. 🔄 = situation change — "
+        "present in our history but their trailing team no longer matches their current roster "
+        "(trade/free agency/cut+sign): their own-history opportunity reflects a role they've "
+        "left, and a tested team-volume correction didn't hold up, so it's repriced the same "
+        "way as rookies. Both priced from real CBS auction $ and/or your analysts' rank "
+        "(not VORP), and not part of the veteran $3,000 budget-conservation total — see "
+        "dbt/models/analytics/market_priced_player_values.sql."
     )
 
 
