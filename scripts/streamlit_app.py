@@ -119,22 +119,37 @@ limit 60
 """
 
 BUDGET_SQL = """
+-- Sleeper mock drafts leave roster_id/picked_by null (no real league roster to
+-- attach to) and only populate draft_slot, so fall back to that as the team key.
+-- Mock drafts also expose no real team names, so label the viewer's own slot
+-- 'You' and the rest generically by slot number.
 select
-    roster_id,
+    case when coalesce(roster_id, draft_slot) = ? then 'You'
+         else 'Team ' || coalesce(roster_id, draft_slot)
+    end as team,
     count(*) as picks_made,
     coalesce(sum(amount), 0) as spent,
     ? - coalesce(sum(amount), 0) as remaining
 from main.drafted_picks
-where roster_id is not null
-group by roster_id
+where coalesce(roster_id, draft_slot) is not null
+group by coalesce(roster_id, draft_slot)
 order by remaining asc
 """
 
-RECENT_PICKS_SQL = """
-select pick_no, round, roster_id, player_name, position, team, amount, is_keeper
+# Target $ by position: reuses the same demand-weighted shares the price-ceiling
+# model conserves across the full $3,000/12-team pool (see player_auction_prices.sql
+# -- QB held at 23.4%, RB/WR/TE split by vorp^0.595), scaled down to one team's budget.
+TARGET_BY_POSITION_SQL = """
+select position, sum(auction_price) / 12.0 * (? / 250.0) as target
+from analytics.player_auction_prices
+group by position
+"""
+
+MY_SPEND_BY_POSITION_SQL = """
+select position, coalesce(sum(amount), 0) as spent
 from main.drafted_picks
-order by pick_no desc
-limit 15
+where coalesce(roster_id, draft_slot) = ?
+group by position
 """
 
 PLAYER_LIST_SQL = """
@@ -261,6 +276,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--league-id", default=DEFAULT_LEAGUE_ID)
     parser.add_argument("--budget", type=int, default=DEFAULT_BUDGET)
     parser.add_argument("--season", type=int, default=DEFAULT_SEASON)
+    parser.add_argument(
+        "--my-slot",
+        type=int,
+        default=None,
+        help="draft_slot to label 'You' (Sleeper mock drafts expose no real team names)",
+    )
     # Streamlit passes its own args through; only parse ours, ignore the rest.
     args, _ = parser.parse_known_args(sys.argv[1:])
     return args
@@ -283,6 +304,24 @@ def style_remaining(val):
     if val < 80:
         return "color: #ffd76d"  # yellow — getting tight
     return "color: #bad761"  # green — plenty left
+
+
+def style_remaining_by_position(row):
+    # Same red/yellow/green intent as style_remaining, but thresholds scaled to
+    # each position's own target instead of the whole-team $250 budget — a $27
+    # TE target being "nearly tapped out" looks nothing like a $250 team budget
+    # being nearly tapped out.
+    target = row["target"]
+    remaining = row["remaining"]
+    if target <= 0:
+        color = "#bad761"
+    elif remaining < 0:
+        color = "#ff657a"
+    elif remaining < 0.3 * target:
+        color = "#ffd76d"
+    else:
+        color = "#bad761"
+    return [""] * len(row.index[:-1]) + [f"color: {color}"]
 
 
 def style_lean(val):
@@ -314,8 +353,9 @@ def load_player_list(db_path: str, league_id: str, season: int) -> pd.DataFrame:
 def live_board():
     con = connect_readonly(args.db_path)
     try:
-        budget_df = con.execute(BUDGET_SQL, [args.budget]).fetch_df()
-        recent_df = con.execute(RECENT_PICKS_SQL).fetch_df()
+        budget_df = con.execute(BUDGET_SQL, [args.my_slot, args.budget]).fetch_df()
+        target_df = con.execute(TARGET_BY_POSITION_SQL, [args.budget]).fetch_df()
+        spent_df = con.execute(MY_SPEND_BY_POSITION_SQL, [args.my_slot]).fetch_df()
         board_df = con.execute(BOARD_SQL, [args.league_id, args.season]).fetch_df()
         market_pool_df = con.execute(
             "select reason, coalesce(sum(estimated_price), 0) as total "
@@ -356,11 +396,35 @@ def live_board():
         )
 
     with col2:
-        st.subheader("Recently drafted")
-        if recent_df.empty:
-            st.info("No picks yet.")
-        else:
-            st.dataframe(recent_df, width="stretch", hide_index=True)
+        st.subheader("Your budget by position")
+        chart_df = (
+            target_df.merge(spent_df, on="position", how="left")
+            .fillna({"spent": 0})
+        )
+        missing_positions = set(spent_df["position"]) - set(target_df["position"])
+        if missing_positions:
+            extra = pd.DataFrame(
+                {"position": list(missing_positions), "target": 0}
+            ).merge(spent_df, on="position")
+            chart_df = pd.concat([chart_df, extra], ignore_index=True)
+        chart_df["remaining"] = chart_df["target"] - chart_df["spent"]
+        chart_df = chart_df.sort_values("target", ascending=False).set_index("position")
+        st.dataframe(
+            chart_df[["target", "spent", "remaining"]].style.apply(
+                style_remaining_by_position, axis=1
+            ),
+            width="stretch",
+            column_config={
+                "target": st.column_config.NumberColumn("target", format="$%.0f"),
+                "spent": st.column_config.NumberColumn("spent", format="$%.0f"),
+                "remaining": st.column_config.NumberColumn("remaining", format="$%.0f"),
+            },
+        )
+        st.caption(
+            "target = your share of the model's demand-weighted price-ceiling pool "
+            "(player_auction_prices.sql), not a hard cap — spend over target where the "
+            "board dictates."
+        )
 
     st.subheader("Best remaining players (undrafted)")
     market_priced_emoji = {"rookie": " 🆕", "situation_change": " 🔄"}

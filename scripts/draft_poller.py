@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS main.drafted_picks (
     pick_no INTEGER PRIMARY KEY,
     round INTEGER,
     roster_id INTEGER,
+    draft_slot INTEGER,
     picked_by VARCHAR,
     sleeper_player_id VARCHAR,
     player_name VARCHAR,
@@ -55,6 +56,7 @@ def to_row(pick: dict, fetched_at: datetime) -> tuple:
         pick.get("pick_no"),
         pick.get("round"),
         pick.get("roster_id"),
+        pick.get("draft_slot"),
         pick.get("picked_by"),
         pick.get("player_id"),
         f"{meta.get('first_name', '')} {meta.get('last_name', '')}".strip() or None,
@@ -80,7 +82,7 @@ def sync_once(db_path: str, draft_id: str) -> int:
             con.executemany(
                 """
                 INSERT INTO main.drafted_picks VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
