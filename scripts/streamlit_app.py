@@ -93,9 +93,10 @@ board_rows as (
     select * from market_priced
 ),
 
--- Select the top 60 by price/vorp first, THEN reorder for display by Heath's tier --
--- otherwise limiting after the display sort would only show his personal top tier,
--- not the same "best remaining players" universe the rest of the board expects.
+-- Select the top 20 per POSITION by price/vorp first (not top-60 overall -- a global
+-- cutoff lets RB/WR's higher price concentration crowd out TE/QB almost entirely, so
+-- filtering the position pill down to TE showed only the 5-7 that survived the global
+-- cut even though far more were tiered), THEN reorder for display by Heath's tier.
 ranked as (
     select
         *,
@@ -104,8 +105,9 @@ ranked as (
             else 1
         end as price_adjusted
     from board_rows
-    order by price desc nulls last, vorp desc
-    limit 60
+    qualify row_number() over (
+        partition by position order by price desc nulls last, vorp desc
+    ) <= 20
 )
 
 select * from ranked
